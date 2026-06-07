@@ -19,7 +19,9 @@ import {
 import { Namespace, Socket } from 'socket.io';
 import { encode } from '../common/helpers/geohash';
 import { parseExactDateTime } from '../common/helpers/datetime';
+import { ZONE_CAPTURE } from '../common/constants';
 import { RunSessionService } from '../run-sessions/run-session.service';
+import { ZonesService } from '../zones/zones.service';
 import { LocationChannel } from './location.channel';
 
 @WebSocketGateway({ namespace: '/hubs/location', cors: { origin: '*' } })
@@ -33,6 +35,7 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     private readonly channel: LocationChannel,
     private readonly runSessionService: RunSessionService,
+    private readonly zonesService: ZonesService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
@@ -89,8 +92,37 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
     const userId = this.getUserId(client);
     if (userId == null) return;
 
-    await this.runSessionService.stopRun(userId);
+    const session = await this.runSessionService.stopRun(userId);
     client.emit('RunStopped');
+
+    // Territory capture happens once, here, from the whole run path.
+    if (!session || session.runTypeId !== ZONE_CAPTURE) return;
+
+    const result = await this.zonesService.captureFromRun({
+      userId,
+      runTypeId: session.runTypeId,
+      startedAt: new Date(session.startedAt),
+      endedAt: new Date(session.endedAt as Date),
+    });
+
+    if (!result.closed) {
+      // Rule 1.2 — loop not closed, nothing saved.
+      client.emit('ZoneNotClosed');
+      return;
+    }
+    if (!result.saved || result.zoneId == null) {
+      // Loop closed but the claim was fully blocked by protected zones (or invalid).
+      client.emit('ZoneNotCaptured');
+      return;
+    }
+
+    client.emit('ZoneCaptured', { zoneId: result.zoneId, areaKm2: result.areaKm2 });
+
+    // Broadcast the new polygon to the geo group around its centroid.
+    const groupPrecision = (this.config.get('game') as { groupPrecision: number }).groupPrecision;
+    const groupKey = `geo:${encode(result.centroidLat!, result.centroidLng!, groupPrecision)}`;
+    const items = await this.zonesService.getZoneItem(result.zoneId);
+    this.server.to(groupKey).emit('ZoneUpdated', items);
   }
 
   private async sendLocation(

@@ -4,12 +4,10 @@ import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@ne
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { encode, getPrefix, haversineDistance } from '../common/helpers/geohash';
-import { ZONE_CAPTURE } from '../common/constants';
+import { encode, haversineDistance } from '../common/helpers/geohash';
 import { GameConfig } from '../config/configuration';
 import { LocationPoint } from '../entities/location-point.entity';
 import { UserLocation } from '../entities/user-location.entity';
-import { Zone } from '../entities/zone.entity';
 import { LocationChannel, LocationUpdate } from './location.channel';
 import { LocationGateway } from './location.gateway';
 
@@ -18,12 +16,6 @@ const delay = (ms: number, signal?: AbortSignal): Promise<void> =>
     const t = setTimeout(resolve, ms);
     signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
   });
-
-interface ZoneChange {
-  geohash: string;
-  userId: string;
-  groupKey: string;
-}
 
 @Injectable()
 export class LocationBackgroundService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -102,11 +94,11 @@ export class LocationBackgroundService implements OnApplicationBootstrap, OnModu
     return batch;
   }
 
+  // Ingests GPS points (+ anti-cheat) and tracks last-known user location.
+  // Zone capture is NOT done here anymore — it happens once at StopRun
+  // (whole run path → PostGIS polygon) in ZonesService.captureFromRun.
   private async processBatch(batch: LocationUpdate[]): Promise<void> {
-    const { maxSpeedMps, zonePrecision, groupPrecision } = this.game;
-
-    const zoneChanges: ZoneChange[] = [];
-    const groupsToNotify = new Set<string>();
+    const { maxSpeedMps, zonePrecision } = this.game;
 
     await this.dataSource.transaction(async (manager) => {
       const validPoints: Partial<LocationPoint>[] = [];
@@ -136,12 +128,6 @@ export class LocationBackgroundService implements OnApplicationBootstrap, OnModu
         });
 
         userUpdates.set(update.userId, update);
-
-        if (update.runTypeId === ZONE_CAPTURE) {
-          const geohash = encode(update.latitude, update.longitude, zonePrecision);
-          const groupKey = 'geo:' + getPrefix(geohash, groupPrecision);
-          zoneChanges.push({ geohash, userId: update.userId, groupKey });
-        }
       }
 
       if (validPoints.length === 0) return;
@@ -166,35 +152,6 @@ export class LocationBackgroundService implements OnApplicationBootstrap, OnModu
           ['userId'],
         );
       }
-
-      // Zone capture / transfer
-      for (const { geohash, userId, groupKey } of zoneChanges) {
-        const zone = await manager.findOne(Zone, { where: { geohash } });
-        if (!zone) {
-          await manager.insert(Zone, {
-            geohash,
-            ownerUserId: userId,
-            capturedAt: new Date(),
-            updatedAt: new Date(),
-          });
-          groupsToNotify.add(groupKey);
-        } else if (zone.ownerUserId !== userId) {
-          await manager.update(
-            Zone,
-            { id: zone.id },
-            { ownerUserId: userId, capturedAt: new Date(), updatedAt: new Date() },
-          );
-          groupsToNotify.add(groupKey);
-        }
-      }
     });
-
-    // Broadcast zone updates to geo groups (after commit)
-    for (const groupKey of groupsToNotify) {
-      const zonesInGroup = zoneChanges
-        .filter((z) => z.groupKey === groupKey)
-        .map((z) => ({ geohash: z.geohash, userId: z.userId }));
-      this.gateway.broadcastZoneUpdated(groupKey, zonesInGroup);
-    }
   }
 }

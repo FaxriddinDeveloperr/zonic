@@ -8,6 +8,7 @@ import { Zone } from './entities/zone.entity';
 import { UserLocation } from './entities/user-location.entity';
 import { LocationPoint } from './entities/location-point.entity';
 import { RunSession } from './entities/run-session.entity';
+import { FreeRun } from './entities/free-run.entity';
 import { RunType } from './entities/run-type.entity';
 import { State } from './entities/state.entity';
 import { Country } from './entities/country.entity';
@@ -17,6 +18,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ZonesModule } from './zones/zones.module';
 import { RunSessionModule } from './run-sessions/run-session.module';
+import { FreeRunModule } from './free-run/free-run.module';
 import { ManualModule } from './manual/manual.module';
 import { RealtimeModule } from './realtime/realtime.module';
 
@@ -27,6 +29,7 @@ const ENTITIES = [
   UserLocation,
   LocationPoint,
   RunSession,
+  FreeRun,
   RunType,
   State,
   Country,
@@ -54,6 +57,7 @@ const ENTITIES = [
     UsersModule,
     ZonesModule,
     RunSessionModule,
+    FreeRunModule,
     ManualModule,
     RealtimeModule,
   ],

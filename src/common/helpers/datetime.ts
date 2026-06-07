@@ -29,6 +29,23 @@ export function formatDuration(ms: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+/** C# "yyyy-MM-ddTHH:mm:ss.fffZ" — ISO 8601 UTC (Dart DateTime.parse compatible). */
+export function formatIso(d: Date): string {
+  return d.toISOString();
+}
+
+/**
+ * Tolerant parser: accepts "dd.MM.yyyy HH:mm:ss" (backend convention) OR ISO 8601
+ * (what older app builds send). Returns null only if neither format matches.
+ */
+export function parseFlexibleDateTime(value: unknown): Date | null {
+  const exact = parseExactDateTime(value);
+  if (exact) return exact;
+  if (typeof value !== 'string') return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : new Date(ms);
+}
+
 /** Parse exactly "dd.MM.yyyy HH:mm:ss" (UTC) like DateTime.TryParseExact; null on mismatch. */
 export function parseExactDateTime(timestamp: unknown): Date | null {
   if (typeof timestamp !== 'string') return null;

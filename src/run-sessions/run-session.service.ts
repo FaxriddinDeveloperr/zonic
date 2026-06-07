@@ -38,12 +38,12 @@ export class RunSessionService {
     return saved.id;
   }
 
-  async stopRun(userId: string): Promise<void> {
+  async stopRun(userId: string): Promise<RunSession | null> {
     const session = await this.sessions.findOne({
       where: { userId, endedAt: IsNull() },
       order: { startedAt: 'DESC' },
     });
-    if (!session) return;
+    if (!session) return null;
 
     const endedAt = new Date();
 
@@ -68,7 +68,7 @@ export class RunSessionService {
     session.endedAt = endedAt;
     session.totalDistanceMeters = totalDistance;
     session.avgSpeedKmh = round(avgSpeedKmh, 2);
-    await this.sessions.save(session);
+    return this.sessions.save(session);
   }
 
   async getRunHistory(

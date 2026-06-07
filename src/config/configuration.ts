@@ -10,6 +10,13 @@ export interface GameConfig {
   rateLimitSeconds: number;
   batchSize: number;
   batchIntervalMs: number;
+  // Territory capture (PostGIS polygon zones)
+  bufferRadiusM: number; // path → polygon buffer radius (m)
+  closeLoopDistanceM: number; // max start↔finish distance to count as a closed loop (m)
+  overtakeFactor: number; // distance multiplier to take another's zone
+  minZoneAreaM2: number; // zone remainder smaller than this is deleted
+  mergeCentroidM: number; // same-user zones merge if centroids within this (m)
+  captureDistanceRatio: number; // full capture: run_km ≥ area_km² × ratio
 }
 
 export interface JwtConfig {
@@ -72,6 +79,12 @@ export default (): AppConfiguration => ({
     rateLimitSeconds: num(process.env.GAME_RATE_LIMIT_SECONDS, 1.0),
     batchSize: num(process.env.GAME_BATCH_SIZE, 100),
     batchIntervalMs: num(process.env.GAME_BATCH_INTERVAL_MS, 1000),
+    bufferRadiusM: num(process.env.GAME_BUFFER_RADIUS_M, 15),
+    closeLoopDistanceM: num(process.env.GAME_CLOSE_LOOP_DISTANCE_M, 150),
+    overtakeFactor: num(process.env.GAME_OVERTAKE_FACTOR, 1.4),
+    minZoneAreaM2: num(process.env.GAME_MIN_ZONE_AREA_M2, 10),
+    mergeCentroidM: num(process.env.GAME_MERGE_CENTROID_M, 500),
+    captureDistanceRatio: num(process.env.GAME_CAPTURE_DISTANCE_RATIO, 1.33),
   },
   social: {
     googleClientIds: csv(process.env.GOOGLE_CLIENT_ID),

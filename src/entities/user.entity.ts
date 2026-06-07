@@ -29,6 +29,14 @@ export class User {
   @Column({ name: 'apple_user_id', type: 'varchar', nullable: true })
   appleUserId: string | null;
 
+  // Identifier of the uploaded avatar file (UploadAvatar → DownloadAvatar); null until set.
+  @Column({ name: 'avatar_file_id', type: 'varchar', nullable: true })
+  avatarFileId: string | null;
+
+  // Personal/team color (hex) applied to all of the user's territory zones; null → default.
+  @Column({ name: 'color', type: 'varchar', nullable: true })
+  color: string | null;
+
   @Column({ name: 'stateid' })
   stateId: number;
 
