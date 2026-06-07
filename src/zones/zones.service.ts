@@ -28,6 +28,7 @@ export interface CaptureSession {
 export interface CaptureResult {
   closed: boolean; // start↔finish within close-loop distance
   saved: boolean; // a polygon was actually created
+  reason?: 'tooShort' | 'blocked' | 'invalid'; // why nothing was saved (when !saved)
   zoneId?: string;
   areaKm2?: number;
   centroidLat?: number;
@@ -189,6 +190,11 @@ export class ZonesService {
       );
     }
 
+    // Reject runs shorter than the minimum (filters GPS-noise micro-loops).
+    if (runDistanceM < this.game.minRunDistanceM) {
+      return { closed: true, saved: false, reason: 'tooShort' };
+    }
+
     const { overtakeFactor, captureDistanceRatio, minZoneAreaM2, mergeCentroidM } = this.game;
     const runDistanceKm = runDistanceM / 1000;
     const userId = session.userId;
@@ -202,7 +208,7 @@ export class ZonesService {
       );
       if (!built[0] || built[0].empty) {
         this.logger.warn(`Invalid capture polygon for user ${userId}`);
-        return { closed: true, saved: false };
+        return { closed: true, saved: false, reason: 'invalid' };
       }
       let znew = built[0].ewkt;
 
@@ -246,7 +252,7 @@ export class ZonesService {
           [znew, blockIds],
         );
         if (!clipped[0] || clipped[0].empty) {
-          return { closed: true, saved: false }; // fully blocked, nothing left to claim
+          return { closed: true, saved: false, reason: 'blocked' }; // nothing left to claim
         }
         znew = clipped[0].ewkt;
       }
@@ -320,7 +326,7 @@ export class ZonesService {
         );
 
       const row = inserted[0];
-      if (!row) return { closed: true, saved: false };
+      if (!row) return { closed: true, saved: false, reason: 'invalid' };
 
       return {
         closed: true,

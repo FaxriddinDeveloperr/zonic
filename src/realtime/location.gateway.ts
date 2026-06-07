@@ -23,6 +23,7 @@ import { ZONE_CAPTURE } from '../common/constants';
 import { RunSessionService } from '../run-sessions/run-session.service';
 import { ZonesService } from '../zones/zones.service';
 import { LocationChannel } from './location.channel';
+import { LocationBackgroundService } from './location-background.service';
 
 @WebSocketGateway({ namespace: '/hubs/location', cors: { origin: '*' } })
 export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -36,6 +37,7 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly channel: LocationChannel,
     private readonly runSessionService: RunSessionService,
     private readonly zonesService: ZonesService,
+    private readonly background: LocationBackgroundService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
@@ -71,7 +73,8 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
     const userId = this.getUserId(client);
     if (userId != null) {
       this.lastUpdate.delete(userId);
-      await this.runSessionService.stopRun(userId);
+      // Disconnect = abandoned run → discard the unfinished session (no history kept).
+      await this.runSessionService.cancelRun(userId);
     }
   }
 
@@ -92,12 +95,19 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
     const userId = this.getUserId(client);
     if (userId == null) return;
 
+    // Make sure the last GPS points are written before we read the path,
+    // otherwise a freshly-sent closing point may be missed (false "not closed").
+    await this.background.waitUntilFlushed();
+
     const session = await this.runSessionService.stopRun(userId);
     client.emit('RunStopped');
 
-    // Territory capture happens once, here, from the whole run path.
-    if (!session || session.runTypeId !== ZONE_CAPTURE) return;
+    if (!session) return;
 
+    // Non-capture runs (e.g. Free Run) are kept as-is, no territory work.
+    if (session.runTypeId !== ZONE_CAPTURE) return;
+
+    // Territory capture happens once, here, from the whole run path.
     const result = await this.zonesService.captureFromRun({
       userId,
       runTypeId: session.runTypeId,
@@ -105,14 +115,13 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
       endedAt: new Date(session.endedAt as Date),
     });
 
-    if (!result.closed) {
-      // Rule 1.2 — loop not closed, nothing saved.
-      client.emit('ZoneNotClosed');
-      return;
-    }
     if (!result.saved || result.zoneId == null) {
-      // Loop closed but the claim was fully blocked by protected zones (or invalid).
-      client.emit('ZoneNotCaptured');
+      // Nothing captured → drop the session so only successful runs stay in history.
+      await this.runSessionService.deleteSession(session.id);
+      if (!result.closed) client.emit('ZoneNotClosed'); // Rule 1.2 — loop not closed
+      else if (result.reason === 'tooShort') {
+        client.emit('ZoneTooShort', { minMeters: this.minRunMeters() });
+      } else client.emit('ZoneNotCaptured'); // closed but blocked / invalid
       return;
     }
 
@@ -123,6 +132,10 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
     const groupKey = `geo:${encode(result.centroidLat!, result.centroidLng!, groupPrecision)}`;
     const items = await this.zonesService.getZoneItem(result.zoneId);
     this.server.to(groupKey).emit('ZoneUpdated', items);
+  }
+
+  private minRunMeters(): number {
+    return (this.config.get('game') as { minRunDistanceM: number }).minRunDistanceM;
   }
 
   private async sendLocation(

@@ -13,6 +13,7 @@ export interface GameConfig {
   // Territory capture (PostGIS polygon zones)
   bufferRadiusM: number; // path → polygon buffer radius (m)
   closeLoopDistanceM: number; // max start↔finish distance to count as a closed loop (m)
+  minRunDistanceM: number; // shortest run distance that may capture a zone (m)
   overtakeFactor: number; // distance multiplier to take another's zone
   minZoneAreaM2: number; // zone remainder smaller than this is deleted
   mergeCentroidM: number; // same-user zones merge if centroids within this (m)
@@ -81,6 +82,7 @@ export default (): AppConfiguration => ({
     batchIntervalMs: num(process.env.GAME_BATCH_INTERVAL_MS, 1000),
     bufferRadiusM: num(process.env.GAME_BUFFER_RADIUS_M, 15),
     closeLoopDistanceM: num(process.env.GAME_CLOSE_LOOP_DISTANCE_M, 150),
+    minRunDistanceM: num(process.env.GAME_MIN_RUN_DISTANCE_M, 500),
     overtakeFactor: num(process.env.GAME_OVERTAKE_FACTOR, 1.4),
     minZoneAreaM2: num(process.env.GAME_MIN_ZONE_AREA_M2, 10),
     mergeCentroidM: num(process.env.GAME_MERGE_CENTROID_M, 500),

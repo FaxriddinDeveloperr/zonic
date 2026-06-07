@@ -9,7 +9,6 @@ import { GameConfig } from '../config/configuration';
 import { LocationPoint } from '../entities/location-point.entity';
 import { UserLocation } from '../entities/user-location.entity';
 import { LocationChannel, LocationUpdate } from './location.channel';
-import { LocationGateway } from './location.gateway';
 
 const delay = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise<void>((resolve) => {
@@ -23,14 +22,27 @@ export class LocationBackgroundService implements OnApplicationBootstrap, OnModu
   private readonly game: GameConfig;
   private readonly abort = new AbortController();
   private loop?: Promise<void>;
+  // Points read from the channel but not yet committed to the DB.
+  private inFlight = 0;
 
   constructor(
     private readonly channel: LocationChannel,
-    private readonly gateway: LocationGateway,
     @InjectDataSource() private readonly dataSource: DataSource,
     config: ConfigService,
   ) {
     this.game = config.get<GameConfig>('game')!;
+  }
+
+  /**
+   * Resolve once every buffered/in-flight location point has been written to the DB.
+   * Called on StopRun so the last GPS point is persisted before the zone is computed.
+   */
+  async waitUntilFlushed(timeoutMs = 3000): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (this.channel.pending() === 0 && this.inFlight === 0) return;
+      await delay(50);
+    }
   }
 
   onApplicationBootstrap(): void {
@@ -48,7 +60,11 @@ export class LocationBackgroundService implements OnApplicationBootstrap, OnModu
       try {
         const batch = await this.readBatch(signal);
         if (batch.length > 0) {
-          await this.processBatch(batch);
+          try {
+            await this.processBatch(batch);
+          } finally {
+            this.inFlight -= batch.length; // committed (or failed) → no longer pending
+          }
         }
       } catch (err) {
         if (signal.aborted) break;
@@ -69,6 +85,7 @@ export class LocationBackgroundService implements OnApplicationBootstrap, OnModu
     let item: LocationUpdate | null;
     while (batch.length < batchSize && (item = this.channel.tryRead()) !== null) {
       batch.push(item);
+      this.inFlight++; // pulled from the channel, not yet committed
     }
 
     if (batch.length < batchSize) {
@@ -83,6 +100,7 @@ export class LocationBackgroundService implements OnApplicationBootstrap, OnModu
           if (!more) break;
           while (batch.length < batchSize && (item = this.channel.tryRead()) !== null) {
             batch.push(item);
+            this.inFlight++; // pulled from the channel, not yet committed
           }
         }
       } finally {

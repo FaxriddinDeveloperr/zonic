@@ -33,6 +33,11 @@ export class LocationChannel {
     return this.buffer.length > 0 ? (this.buffer.shift() as LocationUpdate) : null;
   }
 
+  /** Number of items still buffered (not yet read). */
+  pending(): number {
+    return this.buffer.length;
+  }
+
   /** ChannelReader.WaitToReadAsync — resolves true when an item is available, false if aborted. */
   waitToRead(signal?: AbortSignal): Promise<boolean> {
     if (this.buffer.length > 0) return Promise.resolve(true);

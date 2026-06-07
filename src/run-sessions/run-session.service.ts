@@ -71,6 +71,16 @@ export class RunSessionService {
     return this.sessions.save(session);
   }
 
+  /** Discard the user's unfinished run (disconnect / premature cancel) — keep no history. */
+  async cancelRun(userId: string): Promise<void> {
+    await this.sessions.delete({ userId, endedAt: IsNull() });
+  }
+
+  /** Remove a specific run session (e.g. a zone run that failed to capture). */
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.sessions.delete({ id: sessionId });
+  }
+
   async getRunHistory(
     userId: string,
     request: RunHistoryRequestDto,
