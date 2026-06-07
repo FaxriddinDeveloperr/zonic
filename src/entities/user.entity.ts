@@ -21,6 +21,14 @@ export class User {
   @Column({ name: 'password_salt', type: 'text' })
   passwordSalt: string;
 
+  // Stable Google account id (`sub` of the verified ID token); null for non-Google users.
+  @Column({ name: 'google_user_id', type: 'varchar', nullable: true })
+  googleUserId: string | null;
+
+  // Stable Apple account id (`sub` of the verified identity token); null for non-Apple users.
+  @Column({ name: 'apple_user_id', type: 'varchar', nullable: true })
+  appleUserId: string | null;
+
   @Column({ name: 'stateid' })
   stateId: number;
 

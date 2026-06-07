@@ -20,6 +20,13 @@ export interface JwtConfig {
   refreshTokenExpirationDays: number;
 }
 
+export interface SocialAuthConfig {
+  // Accepted `aud` values for Google ID tokens (iOS / Android / web client IDs).
+  googleClientIds: string[];
+  // Accepted `aud` values for Apple identity tokens (app bundle id / service id).
+  appleClientIds: string[];
+}
+
 export interface AppConfiguration {
   port: number;
   database: {
@@ -31,7 +38,15 @@ export interface AppConfiguration {
   };
   jwt: JwtConfig;
   game: GameConfig;
+  social: SocialAuthConfig;
 }
+
+// Comma-separated env value → trimmed non-empty list.
+const csv = (v: string | undefined): string[] =>
+  (v ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 
 export default (): AppConfiguration => ({
   port: num(process.env.PORT, 5065),
@@ -57,5 +72,9 @@ export default (): AppConfiguration => ({
     rateLimitSeconds: num(process.env.GAME_RATE_LIMIT_SECONDS, 1.0),
     batchSize: num(process.env.GAME_BATCH_SIZE, 100),
     batchIntervalMs: num(process.env.GAME_BATCH_INTERVAL_MS, 1000),
+  },
+  social: {
+    googleClientIds: csv(process.env.GOOGLE_CLIENT_ID),
+    appleClientIds: csv(process.env.APPLE_CLIENT_ID),
   },
 });

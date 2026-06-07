@@ -32,6 +32,14 @@ export class AuthService {
       throw badRequest(['Invalid username or password.']);
     }
 
+    return this.issueTokensFor(user);
+  }
+
+  /**
+   * Mint a fresh access + refresh token pair for an already-authenticated user.
+   * Shared by password login, refresh-token rotation, and social (Google/Apple) login.
+   */
+  async issueTokensFor(user: User): Promise<GenerateTokenOutDto> {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = AuthService.generateRefreshTokenString();
     const now = new Date();
@@ -64,22 +72,7 @@ export class AuthService {
     stored.revokedAt = new Date();
     await this.refreshTokens.save(stored);
 
-    const user = stored.user!;
-    const accessToken = this.generateAccessToken(user);
-    const newRefreshToken = AuthService.generateRefreshTokenString();
-    const now = new Date();
-    const refreshExpiresAt = new Date(now.getTime() + this.refreshDays() * 86_400_000);
-
-    await this.refreshTokens.save(
-      this.refreshTokens.create({
-        userId: user.id,
-        token: newRefreshToken,
-        expiresAt: refreshExpiresAt,
-        createdAt: now,
-      }),
-    );
-
-    return this.buildOutput(accessToken, newRefreshToken, refreshExpiresAt, now);
+    return this.issueTokensFor(stored.user!);
   }
 
   private generateAccessToken(user: User): string {

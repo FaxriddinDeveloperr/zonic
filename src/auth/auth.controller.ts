@@ -2,14 +2,20 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { SocialAuthService } from './social-auth.service';
 import { GenerateTokenInDto } from './dto/generate-token-in.dto';
 import { RefreshTokenInDto } from './dto/refresh-token-in.dto';
+import { GoogleLoginInDto } from './dto/google-login-in.dto';
+import { AppleLoginInDto } from './dto/apple-login-in.dto';
 import { GenerateTokenOutDto } from './dto/generate-token-out.dto';
 
 @ApiTags('Account')
 @Controller('Account')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly socialAuthService: SocialAuthService,
+  ) {}
 
   @Post('Login')
   @HttpCode(200)
@@ -27,5 +33,23 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Invalid or expired refresh token' })
   refresh(@Body() dto: RefreshTokenInDto): Promise<GenerateTokenOutDto> {
     return this.authService.refreshToken(dto);
+  }
+
+  @Post('GoogleLogin')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Sign in with a Google ID token; returns JWT access + refresh tokens' })
+  @ApiResponse({ status: 200, type: GenerateTokenOutDto })
+  @ApiResponse({ status: 400, description: 'Invalid Google token' })
+  googleLogin(@Body() dto: GoogleLoginInDto): Promise<GenerateTokenOutDto> {
+    return this.socialAuthService.googleLogin(dto);
+  }
+
+  @Post('AppleLogin')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Sign in with an Apple identity token; returns JWT access + refresh tokens' })
+  @ApiResponse({ status: 200, type: GenerateTokenOutDto })
+  @ApiResponse({ status: 400, description: 'Invalid Apple token' })
+  appleLogin(@Body() dto: AppleLoginInDto): Promise<GenerateTokenOutDto> {
+    return this.socialAuthService.appleLogin(dto);
   }
 }
