@@ -49,18 +49,43 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
     console.log(`CONNECTED: ${client.id}`);
     client.emit('Connected', client.id);
 
-    // SendLocation — positional args (SignalR contract) → raw listener.
-    client.on(
-      'SendLocation',
-      (
-        lat: number,
-        lng: number,
-        accuracy: number,
-        speed: number,
-        timestamp: string,
-        runTypeId: number,
-      ) => this.sendLocation(client, lat, lng, accuracy, speed, timestamp, runTypeId),
-    );
+    // SendLocation — accept ANY shape the client sends:
+    //   positional:  emit('SendLocation', lat, lng, accuracy, speed, ts, runTypeId)
+    //   array:       emit('SendLocation', [lat, lng, accuracy, speed, ts, runTypeId])
+    //   object:      emit('SendLocation', { lat, lng, accuracy, speed, timestamp, runTypeId })
+    client.on('SendLocation', (...args: unknown[]) => {
+      const p = LocationGateway.parseLocationArgs(args);
+      if (p) {
+        this.sendLocation(client, p.lat, p.lng, p.accuracy, p.speed, p.timestamp, p.runTypeId);
+      }
+    });
+  }
+
+  /** Normalise the three accepted SendLocation shapes into one object. */
+  private static parseLocationArgs(args: unknown[]): {
+    lat: number; lng: number; accuracy: number; speed: number; timestamp: string; runTypeId: number;
+  } | null {
+    let src: unknown[] | Record<string, unknown>;
+    const first = args[0];
+    if (Array.isArray(first)) src = first as unknown[];
+    else if (first && typeof first === 'object') src = first as Record<string, unknown>;
+    else src = args;
+
+    const get = (arr: unknown[], i: number, obj: Record<string, unknown>, key: string): unknown =>
+      Array.isArray(src) ? arr[i] : obj[key];
+
+    const a = src as unknown[];
+    const o = src as Record<string, unknown>;
+    const num = (v: unknown): number => Number(v);
+    const lat = num(get(a, 0, o, 'lat'));
+    const lng = num(get(a, 1, o, 'lng'));
+    const accuracy = num(get(a, 2, o, 'accuracy'));
+    const speed = num(get(a, 3, o, 'speed'));
+    const tsRaw = get(a, 4, o, 'timestamp');
+    const runTypeId = num(get(a, 5, o, 'runTypeId'));
+    const timestamp = typeof tsRaw === 'string' ? tsRaw : String(tsRaw ?? '');
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng, accuracy, speed, timestamp, runTypeId };
   }
 
   async handleDisconnect(client: Socket): Promise<void> {
@@ -81,10 +106,18 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage('StartRun')
   async startRun(
     @ConnectedSocket() client: Socket,
-    @MessageBody() runTypeId: number,
+    @MessageBody() body: unknown,
   ): Promise<void> {
     const userId = this.getUserId(client);
     if (userId == null) return;
+
+    // Accept 1, [1] or { runTypeId: 1 }.
+    let runTypeId = Number(body);
+    if (Array.isArray(body)) runTypeId = Number(body[0]);
+    else if (body && typeof body === 'object') {
+      runTypeId = Number((body as Record<string, unknown>).runTypeId);
+    }
+    if (!Number.isFinite(runTypeId)) runTypeId = ZONE_CAPTURE;
 
     const sessionId = await this.runSessionService.startRun(userId, runTypeId);
     client.emit('RunStarted', sessionId);
@@ -147,9 +180,6 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
     timestamp: string,
     runTypeId: number,
   ): Promise<void> {
-    console.log(
-      `SEND LOCATION CALLED: lat=${lat}, lng=${lng}, acc=${accuracy}, spd=${speed}, ts=${timestamp}`,
-    );
     const userId = this.getUserId(client);
     if (userId == null) return;
 
