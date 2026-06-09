@@ -200,10 +200,12 @@ export class ZonesService {
     const userId = session.userId;
 
     return this.dataSource.transaction(async (manager) => {
-      // A) Build the new polygon from the closed ring.
+      // A) Build the polygon from the closed ring.
+      // Real GPS tracks self-intersect, which makes ST_MakePolygon throw. ST_Node splits
+      // the line at every crossing and ST_BuildArea fills the enclosed faces — robust to noise.
       const built: Array<{ ewkt: string; empty: boolean }> = await manager.query(
         `SELECT ST_AsEWKT(g) AS ewkt, ST_IsEmpty(g) AS empty
-           FROM (SELECT ${NORM('ST_MakePolygon(ST_GeomFromText($1, 4326))')} AS g) q`,
+           FROM (SELECT ${NORM('ST_BuildArea(ST_Node(ST_GeomFromText($1, 4326)))')} AS g) q`,
         [wkt],
       );
       if (!built[0] || built[0].empty) {
