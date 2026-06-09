@@ -12,8 +12,15 @@ import { LocationChannel, LocationUpdate } from './location.channel';
 
 const delay = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise<void>((resolve) => {
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+    const onAbort = (): void => {
+      clearTimeout(t);
+      resolve();
+    };
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort); // detach so listeners don't pile up
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 
 @Injectable()
