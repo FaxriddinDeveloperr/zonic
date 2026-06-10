@@ -153,7 +153,7 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
         return;
       }
 
-      // Try to capture from the path so far (session is NOT ended yet).
+      // StopRun is final: try to capture from the whole path.
       const result = await this.zonesService.captureFromRun({
         userId,
         runTypeId: session.runTypeId,
@@ -162,8 +162,10 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
       });
 
       if (!result.saved || result.zoneId == null) {
-        // Capture failed → KEEP the run active so the user can keep running and
-        // press Finish again. Nothing is ended or deleted; only a warning is sent.
+        // Not a valid zone (not closed / < min distance / blocked) → run ends,
+        // nothing saved (discarded, never enters history). User must StartRun to retry.
+        await this.runSessionService.deleteSession(session.id);
+        client.emit('RunStopped');
         if (!result.closed) client.emit('ZoneNotClosed'); // loop not closed (≤150m)
         else if (result.reason === 'tooShort') {
           client.emit('ZoneTooShort', { minMeters: this.minRunMeters(), ranMeters: result.ranMeters });

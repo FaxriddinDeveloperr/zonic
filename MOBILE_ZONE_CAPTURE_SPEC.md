@@ -126,19 +126,19 @@ String formatTs(DateTime t) {
       b) ~600ms kut (oxirgi nuqta serverga yetib borishi uchun).
       c) emit('StopRun')
       d) Quyidagilardан BIRINI kut (timeout 15s):
-           ZoneCaptured   → "Tabriklaymiz!" + GetArea qayta yukla → yugurishni YAKUNLA
-           ZoneNotClosed  → "Halqani yoping (≤150m)"   → ⚠️ yugurishni YAKUNLAMA, davom etish mumkin
-           ZoneTooShort   → "Kamida 500m yuguring"      → ⚠️ yugurishni YAKUNLAMA, davom etish mumkin
-           ZoneNotCaptured→ "Bu hudud band"             → ⚠️ yugurishni YAKUNLAMA, davom etish mumkin
+           ZoneCaptured   → "Tabriklaymiz!" + GetArea qayta yukla. Zona chizildi.
+           ZoneNotClosed  → "Halqa yopilmadi (≤150m kerak)". Yugurish tugadi, saqlanmadi.
+           ZoneTooShort   → "Siz {ranMeters}m yugurdingiz, kamida 500m kerak". Saqlanmadi.
+           ZoneNotCaptured→ "Bu hudud band". Saqlanmadi.
       e) ⚠️ Natija kelmaguncha socketни UZMA.
 
-  ⚠️⚠️ MUHIM — ogohlantirishда yo'lni O'CHIRMA:
-     ZoneNotClosed / ZoneTooShort / ZoneNotCaptured kelса — bu YAKUN EMAS.
-     Server yugurishni FAOL holatда saqlaydi. Mijoz HAM yig'ilган GPS yo'lni
-     (track) o'chirmasdan saqlab tursin, foydalanuvchi davom etib yugurib,
-     keyin yana 'StopRun' bossin. Faqat 'ZoneCaptured' kelганда yugurish yakunlanadi.
-     (Qisqa internet uzilishi ham yugurishni o'chirmaydi — server saqlaydi.)
-     Yugurishni butunlay bekor qilish uchungina track tozalanadi (yangi 'StartRun').
+  ⚠️ MUHIM — 'StopRun' YAKUNIY (qat'iy):
+     'StopRun' bosilsa yugurish HAR HOLATDA tugaydi. Faqat 'ZoneCaptured' bo'lsa
+     zona chiziladi/saqlanadi. Qolgan 3 natijada (yopilmagan / <500m / band) yugurish
+     tugaydi, lekin HECH NARSA saqlanmaydi. Qayta urinish uchun foydalanuvchi YANGIDAN
+     'StartRun' qiladi.
+     ⚠️ Frontend MASLAHAT: 500m ga yetmagan / halqa yopilmagan bo'lsa, 'StopRun'
+     yubormasdan oldin ogohlantirib, davom etishga undang — behuda yugurish kamayadi.
 6. Istalgan vaqtда 'ZoneUpdated' kelса → joriy xarita uchun GetArea qayta yukla.
 7. BEKOR QILISH (saqlamasdan chiqish): socket.disconnect() — server sessiyani o'chiradi.
 ```
