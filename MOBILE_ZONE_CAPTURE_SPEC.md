@@ -73,7 +73,7 @@ socket.connect();
 | `RunStopped` | (bo'sh) | `StopRun`dan keyin keladi. ⚠️ Bu YAKUNIY natija EMAS — pastdagi 4 hodisadan birini kuting |
 | `ZoneCaptured` | `{ "zoneId": String, "areaKm2": double }` | ✅ Zona egallandi |
 | `ZoneNotClosed` | (bo'sh) | ❌ Halqa yopilmagan (boshlanish↔tugash > 150m) |
-| `ZoneTooShort` | `{ "minMeters": int }` | ❌ Yugurish < 500m |
+| `ZoneTooShort` | `{ "minMeters": int, "ranMeters": int }` | ❌ Yugurish < 500m (`ranMeters` — server hisoblagan masofa) |
 | `ZoneNotCaptured`| `{ "reason": String }` yoki bo'sh | ❌ Hudud band (himoyalangan zona) yoki server xatosi |
 | `ZoneUpdated` | `List<ZoneItem>` | Atrofda zona o'zgardi → xaritani qayta yuklang (`GetArea`) |
 
@@ -126,11 +126,19 @@ String formatTs(DateTime t) {
       b) ~600ms kut (oxirgi nuqta serverga yetib borishi uchun).
       c) emit('StopRun')
       d) Quyidagilardан BIRINI kut (timeout 15s):
-           ZoneCaptured   → "Tabriklaymiz!" + GetArea qayta yukla
-           ZoneNotClosed  → "Halqani yoping (≤150m)"
-           ZoneTooShort   → "Kamida 500m yuguring"
-           ZoneNotCaptured→ "Bu hudud band"
+           ZoneCaptured   → "Tabriklaymiz!" + GetArea qayta yukla → yugurishni YAKUNLA
+           ZoneNotClosed  → "Halqani yoping (≤150m)"   → ⚠️ yugurishni YAKUNLAMA, davom etish mumkin
+           ZoneTooShort   → "Kamida 500m yuguring"      → ⚠️ yugurishni YAKUNLAMA, davom etish mumkin
+           ZoneNotCaptured→ "Bu hudud band"             → ⚠️ yugurishni YAKUNLAMA, davom etish mumkin
       e) ⚠️ Natija kelmaguncha socketни UZMA.
+
+  ⚠️⚠️ MUHIM — ogohlantirishда yo'lni O'CHIRMA:
+     ZoneNotClosed / ZoneTooShort / ZoneNotCaptured kelса — bu YAKUN EMAS.
+     Server yugurishni FAOL holatда saqlaydi. Mijoz HAM yig'ilган GPS yo'lni
+     (track) o'chirmasdan saqlab tursin, foydalanuvchi davom etib yugurib,
+     keyin yana 'StopRun' bossin. Faqat 'ZoneCaptured' kelганда yugurish yakunlanadi.
+     (Qisqa internet uzilishi ham yugurishni o'chirmaydi — server saqlaydi.)
+     Yugurishni butunlay bekor qilish uchungina track tozalanadi (yangi 'StartRun').
 6. Istalgan vaqtда 'ZoneUpdated' kelса → joriy xarita uchun GetArea qayta yukla.
 7. BEKOR QILISH (saqlamasdan chiqish): socket.disconnect() — server sessiyani o'chiradi.
 ```

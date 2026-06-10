@@ -101,8 +101,10 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
     const userId = this.getUserId(client);
     if (userId != null) {
       this.lastUpdate.delete(userId);
-      // Disconnect = abandoned run → discard the unfinished session (no history kept).
-      await this.runSessionService.cancelRun(userId);
+      // NOTE: we intentionally do NOT end/delete the run here. A brief network drop
+      // (or a reconnect after a warning) must not wipe an in-progress run. The run
+      // survives until it's finished (captured) or replaced by the next StartRun.
+      // Unfinished runs never enter history (they have no ended_at).
     }
   }
 
@@ -138,32 +140,40 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
       // otherwise a freshly-sent closing point may be missed (false "not closed").
       await this.background.waitUntilFlushed();
 
-      const session = await this.runSessionService.stopRun(userId);
-      client.emit('RunStopped');
+      const session = await this.runSessionService.getActiveSession(userId);
+      if (!session) {
+        client.emit('RunStopped');
+        return;
+      }
 
-      if (!session) return;
+      // Non-capture runs (e.g. Free Run) just end.
+      if (session.runTypeId !== ZONE_CAPTURE) {
+        await this.runSessionService.finalizeRun(session);
+        client.emit('RunStopped');
+        return;
+      }
 
-      // Non-capture runs (e.g. Free Run) are kept as-is, no territory work.
-      if (session.runTypeId !== ZONE_CAPTURE) return;
-
-      // Territory capture happens once, here, from the whole run path.
+      // Try to capture from the path so far (session is NOT ended yet).
       const result = await this.zonesService.captureFromRun({
         userId,
         runTypeId: session.runTypeId,
         startedAt: new Date(session.startedAt),
-        endedAt: new Date(session.endedAt as Date),
+        endedAt: new Date(),
       });
 
       if (!result.saved || result.zoneId == null) {
-        // Nothing captured → drop the session so only successful runs stay in history.
-        await this.runSessionService.deleteSession(session.id);
-        if (!result.closed) client.emit('ZoneNotClosed'); // Rule 1.2 — loop not closed
+        // Capture failed → KEEP the run active so the user can keep running and
+        // press Finish again. Nothing is ended or deleted; only a warning is sent.
+        if (!result.closed) client.emit('ZoneNotClosed'); // loop not closed (≤150m)
         else if (result.reason === 'tooShort') {
-          client.emit('ZoneTooShort', { minMeters: this.minRunMeters() });
-        } else client.emit('ZoneNotCaptured'); // closed but blocked / invalid
+          client.emit('ZoneTooShort', { minMeters: this.minRunMeters(), ranMeters: result.ranMeters });
+        } else client.emit('ZoneNotCaptured'); // closed but blocked
         return;
       }
 
+      // Success → end the run and report it.
+      await this.runSessionService.finalizeRun(session);
+      client.emit('RunStopped');
       client.emit('ZoneCaptured', { zoneId: result.zoneId, areaKm2: result.areaKm2 });
 
       // Broadcast the new polygon to the geo group around its centroid.

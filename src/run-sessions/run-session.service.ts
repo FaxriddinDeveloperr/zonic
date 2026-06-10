@@ -26,6 +26,9 @@ export class RunSessionService {
   ) {}
 
   async startRun(userId: string, runTypeId: number): Promise<string> {
+    // Discard any leftover unfinished run so a user only ever has one active session.
+    await this.sessions.delete({ userId, endedAt: IsNull() });
+
     const saved = await this.sessions.save(
       this.sessions.create({
         userId,
@@ -38,17 +41,20 @@ export class RunSessionService {
     return saved.id;
   }
 
-  async stopRun(userId: string): Promise<RunSession | null> {
-    const session = await this.sessions.findOne({
+  /** The user's current unfinished run, if any. Does NOT end it. */
+  async getActiveSession(userId: string): Promise<RunSession | null> {
+    return this.sessions.findOne({
       where: { userId, endedAt: IsNull() },
       order: { startedAt: 'DESC' },
     });
-    if (!session) return null;
+  }
 
+  /** End a run: stamp ended_at and store the computed distance/speed. */
+  async finalizeRun(session: RunSession): Promise<RunSession> {
     const endedAt = new Date();
 
     const points = await this.points.find({
-      where: { userId, recordedAt: Between(session.startedAt, endedAt) },
+      where: { userId: session.userId, recordedAt: Between(session.startedAt, endedAt) },
       order: { recordedAt: 'ASC' },
     });
 

@@ -29,6 +29,7 @@ export interface CaptureResult {
   closed: boolean; // start↔finish within close-loop distance
   saved: boolean; // a polygon was actually created
   reason?: 'tooShort' | 'blocked' | 'invalid'; // why nothing was saved (when !saved)
+  ranMeters?: number; // distance the server measured for this run (diagnostics / UI)
   zoneId?: string;
   areaKm2?: number;
   centroidLat?: number;
@@ -192,7 +193,7 @@ export class ZonesService {
 
     // Reject runs shorter than the minimum (filters GPS-noise micro-loops).
     if (runDistanceM < this.game.minRunDistanceM) {
-      return { closed: true, saved: false, reason: 'tooShort' };
+      return { closed: true, saved: false, reason: 'tooShort', ranMeters: Math.round(runDistanceM) };
     }
 
     const { overtakeFactor, captureDistanceRatio, minZoneAreaM2, mergeCentroidM } = this.game;
