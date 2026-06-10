@@ -1,9 +1,11 @@
 // Free run persistence + history/leaderboard queries.
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FreeRun, RoutePoint } from '../entities/free-run.entity';
 import { User } from '../entities/user.entity';
+import { GameConfig } from '../config/configuration';
 import { haversineDistance } from '../common/helpers/geohash';
 import { formatIso, parseFlexibleDateTime } from '../common/helpers/datetime';
 import { badRequest } from '../common/validation-problem';
@@ -21,9 +23,14 @@ const round = (v: number, d: number): number => {
 
 @Injectable()
 export class FreeRunService {
+  private readonly minDistanceM: number;
+
   constructor(
     @InjectRepository(FreeRun) private readonly freeRuns: Repository<FreeRun>,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.minDistanceM = config.get<GameConfig>('game')!.minFreeRunDistanceM;
+  }
 
   async save(userId: string, dto: SaveFreeRunDto): Promise<{ id: string }> {
     const startedAt = parseFlexibleDateTime(dto.startTime);
@@ -42,6 +49,11 @@ export class FreeRunService {
       dto.averageSpeedKmh,
       dto.durationSeconds,
     );
+
+    // Don't store runs shorter than the minimum (filters trivial/noise runs).
+    if (distanceKm * 1000 < this.minDistanceM) {
+      throw badRequest([`Free run too short — minimum ${this.minDistanceM} m required.`]);
+    }
 
     const saved = await this.freeRuns.save(
       this.freeRuns.create({

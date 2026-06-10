@@ -14,6 +14,7 @@ export interface GameConfig {
   bufferRadiusM: number; // path → polygon buffer radius (m)
   closeLoopDistanceM: number; // max start↔finish distance to count as a closed loop (m)
   minRunDistanceM: number; // shortest run distance that may capture a zone (m)
+  minFreeRunDistanceM: number; // shortest free run that is saved to history (m)
   overtakeFactor: number; // distance multiplier to take another's zone
   minZoneAreaM2: number; // zone remainder smaller than this is deleted
   mergeCentroidM: number; // same-user zones merge if centroids within this (m)
@@ -83,6 +84,7 @@ export default (): AppConfiguration => ({
     bufferRadiusM: num(process.env.GAME_BUFFER_RADIUS_M, 15),
     closeLoopDistanceM: num(process.env.GAME_CLOSE_LOOP_DISTANCE_M, 150),
     minRunDistanceM: num(process.env.GAME_MIN_RUN_DISTANCE_M, 500),
+    minFreeRunDistanceM: num(process.env.GAME_MIN_FREE_RUN_DISTANCE_M, 150),
     overtakeFactor: num(process.env.GAME_OVERTAKE_FACTOR, 1.4),
     minZoneAreaM2: num(process.env.GAME_MIN_ZONE_AREA_M2, 10),
     mergeCentroidM: num(process.env.GAME_MERGE_CENTROID_M, 500),
