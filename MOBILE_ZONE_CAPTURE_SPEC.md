@@ -268,8 +268,8 @@ Rang o'zgartirilса — foydalanuvchining BARCHA zonalari shu rangга o'tadi.
 - Halqa **≤150m** yopilishi shart → aks holda `ZoneNotClosed`.
 - Yugurish masofasi **≥500m** → aks holda `ZoneTooShort`.
 - Zona = yugurilган yo'l ichidagi **to'ldirilган maydon** (poligon).
-- Boshqaning zonasини olish: masofangiz **egasinikidan ≥1.4×** ko'p bo'lsa — egallaysiz/kesib olasiz; kam bo'lsa — sizning zonangiz uning chegarasidан kesiladi.
-- To'liq qoplab egallash: `yugurish_km ≥ maydon_km² × 1.33`.
+- Boshqaning zonasini olish: o'z yopiq halqangiz uning zonasi bilan **ustma-ust tushsa** — o'sha ustma-ust qism undan **kesilib sizga o'tadi** (masofa sharti YO'Q).
+- To'liq o'rab olsangiz — uning zonasi **butunlay** sizga o'tadi (o'chadi).
 - O'z zonalaringiz tegса yoki markazlari **≤500m** bo'lsa — avtomatik **birlashadi**.
 
 ### SendLocation server-side filtrlari (mijoz o'ylamasligi mumkin, lekin bilса foydali)

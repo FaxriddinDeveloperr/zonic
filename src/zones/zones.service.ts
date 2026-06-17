@@ -196,8 +196,7 @@ export class ZonesService {
       return { closed: true, saved: false, reason: 'tooShort', ranMeters: Math.round(runDistanceM) };
     }
 
-    const { overtakeFactor, captureDistanceRatio, minZoneAreaM2, mergeCentroidM } = this.game;
-    const runDistanceKm = runDistanceM / 1000;
+    const { minZoneAreaM2, mergeCentroidM } = this.game;
     const userId = session.userId;
 
     return this.dataSource.transaction(async (manager) => {
@@ -213,59 +212,21 @@ export class ZonesService {
         this.logger.warn(`Invalid capture polygon for user ${userId}`);
         return { closed: true, saved: false, reason: 'invalid' };
       }
-      let znew = built[0].ewkt;
+      // The runner always keeps everything they enclosed — no clipping, no distance gate.
+      const znew = built[0].ewkt;
 
-      // B) Classify other users' overlapping zones.
-      const others: Array<{
-        id: string;
-        run_distance_m: number;
-        area_m2: number;
-        fully_covered: boolean;
-      }> = await manager.query(
-        `SELECT id::text AS id, run_distance_m, ST_Area(geom::geography) AS area_m2,
-                ST_CoveredBy(geom, ST_GeomFromEWKT($1)) AS fully_covered
-           FROM game_territory
+      // B) Every OTHER user's zone overlapping the new one is overtaken (cut), regardless of
+      //    distance. A fully-covered zone becomes empty after the cut → deleted (full capture).
+      const others: Array<{ id: string }> = await manager.query(
+        `SELECT id::text AS id FROM game_territory
           WHERE owner_user_id <> $2
             AND geom && ST_GeomFromEWKT($1)
             AND ST_Intersects(geom, ST_GeomFromEWKT($1))`,
         [znew, userId],
       );
+      const cutIds = others.map((z) => z.id);
 
-      const fullIds: string[] = [];
-      const cutIds: string[] = [];
-      const blockIds: string[] = [];
-      for (const z of others) {
-        const areaKm2 = Number(z.area_m2) / 1_000_000;
-        if (z.fully_covered && runDistanceKm >= areaKm2 * captureDistanceRatio) {
-          fullIds.push(z.id); // Rule 4
-        } else if (runDistanceM >= Number(z.run_distance_m) * overtakeFactor) {
-          cutIds.push(z.id); // Rule 2/3 — allowed to cut
-        } else {
-          blockIds.push(z.id); // protected — clip the new zone instead
-        }
-      }
-
-      // C) Clip the new zone by protected (blocking) zones.
-      if (blockIds.length > 0) {
-        const clipped: Array<{ ewkt: string; empty: boolean }> = await manager.query(
-          `SELECT ST_AsEWKT(g) AS ewkt, ST_IsEmpty(g) AS empty
-             FROM (SELECT ${NORM(
-               'ST_Difference(ST_GeomFromEWKT($1), (SELECT ST_Union(geom) FROM game_territory WHERE id = ANY($2::uuid[])))',
-             )} AS g) q`,
-          [znew, blockIds],
-        );
-        if (!clipped[0] || clipped[0].empty) {
-          return { closed: true, saved: false, reason: 'blocked' }; // nothing left to claim
-        }
-        znew = clipped[0].ewkt;
-      }
-
-      // D) Rule 4 — fully captured zones are removed (their area is inside znew).
-      if (fullIds.length > 0) {
-        await manager.query(`DELETE FROM game_territory WHERE id = ANY($1::uuid[])`, [fullIds]);
-      }
-
-      // E) Rule 2/3 — cut the new zone out of cuttable zones; drop tiny remainders.
+      // C) Cut the overlap out of every overlapping zone; drop empty/tiny remainders.
       if (cutIds.length > 0) {
         const rem: Array<{ id: string; rem_area: number | null }> = await manager.query(
           `SELECT id::text AS id, ST_Area(ST_Difference(geom, ST_GeomFromEWKT($1))::geography) AS rem_area
