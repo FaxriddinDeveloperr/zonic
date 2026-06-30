@@ -85,9 +85,14 @@ export class UserProfileController {
   }
 
   @Get('GetLeaderboard')
-  @ApiOperation({ summary: 'Paginated leaderboard ranked by total distance' })
+  @ApiOperation({
+    summary: 'Paginated leaderboard ranked by total distance (scope: global/country/region)',
+  })
   @ApiOkResponse({ type: LeaderboardResponseDto })
-  getLeaderboard(@Query() request: LeaderboardRequestDto): Promise<LeaderboardResponseDto> {
-    return this.runSessionService.getLeaderboard(request);
+  getLeaderboard(
+    @CurrentUser() user: AuthUser,
+    @Query() request: LeaderboardRequestDto,
+  ): Promise<LeaderboardResponseDto> {
+    return this.runSessionService.getLeaderboard(request, user.userId);
   }
 }

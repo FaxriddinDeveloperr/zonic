@@ -29,6 +29,20 @@ export interface JwtConfig {
   refreshTokenExpirationDays: number;
 }
 
+// Earn-rates for the two currencies (Phase J). All overridable via env.
+export interface EconomyConfig {
+  tangaPerKm: number;
+  tangaPer1000Steps: number;
+  tangaPerHexagon: number;
+  xpPerKm: number;
+  xpPer1000Steps: number;
+  xpPerHexagon: number;
+  xpRetentionHours: number; // free tier
+  xpRetentionHoursPremium: number; // gold / gold+ tier
+  // Market: how many tanga of discount each spent XP buys (Phase K).
+  xpDiscountTangaPerXp: number;
+}
+
 export interface SocialAuthConfig {
   // Accepted `aud` values for Google ID tokens (iOS / Android / web client IDs).
   googleClientIds: string[];
@@ -47,6 +61,7 @@ export interface AppConfiguration {
   };
   jwt: JwtConfig;
   game: GameConfig;
+  economy: EconomyConfig;
   social: SocialAuthConfig;
 }
 
@@ -89,6 +104,17 @@ export default (): AppConfiguration => ({
     minZoneAreaM2: num(process.env.GAME_MIN_ZONE_AREA_M2, 10),
     mergeCentroidM: num(process.env.GAME_MERGE_CENTROID_M, 500),
     captureDistanceRatio: num(process.env.GAME_CAPTURE_DISTANCE_RATIO, 1.33),
+  },
+  economy: {
+    tangaPerKm: num(process.env.ECON_TANGA_PER_KM, 100),
+    tangaPer1000Steps: num(process.env.ECON_TANGA_PER_1000_STEPS, 50),
+    tangaPerHexagon: num(process.env.ECON_TANGA_PER_HEXAGON, 200),
+    xpPerKm: num(process.env.ECON_XP_PER_KM, 1000),
+    xpPer1000Steps: num(process.env.ECON_XP_PER_1000_STEPS, 500),
+    xpPerHexagon: num(process.env.ECON_XP_PER_HEXAGON, 2000),
+    xpRetentionHours: num(process.env.ECON_XP_RETENTION_HOURS, 24),
+    xpRetentionHoursPremium: num(process.env.ECON_XP_RETENTION_HOURS_PREMIUM, 48),
+    xpDiscountTangaPerXp: num(process.env.ECON_XP_DISCOUNT_TANGA_PER_XP, 1),
   },
   social: {
     googleClientIds: csv(process.env.GOOGLE_CLIENT_ID),

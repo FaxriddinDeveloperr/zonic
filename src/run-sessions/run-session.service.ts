@@ -9,7 +9,7 @@ import { User } from '../entities/user.entity';
 import { haversineDistance } from '../common/helpers/geohash';
 import { formatDate, formatDuration, formatHourMinute } from '../common/helpers/datetime';
 import { RunHistoryRequestDto } from './dto/run-history-request.dto';
-import { LeaderboardRequestDto } from './dto/leaderboard-request.dto';
+import { LeaderboardRequestDto, LeaderboardScope } from './dto/leaderboard-request.dto';
 import { RunHistoryResponseDto, RunSummaryDto } from './dto/run-history-response.dto';
 import { LeaderboardResponseDto } from './dto/leaderboard-response.dto';
 
@@ -115,30 +115,65 @@ export class RunSessionService {
     return { runs, summary: RunSessionService.buildSummary(sessions) };
   }
 
-  async getLeaderboard(request: LeaderboardRequestDto): Promise<LeaderboardResponseDto> {
+  /**
+   * Leaderboard ranked by total distance. `scope` (Phase H) narrows the ranking to the caller's
+   * own country/region; 'global' (or an anonymous caller) ranks everyone. The region filter joins
+   * sys_user and matches the caller's country_id/region_id — so callers without a profile region
+   * simply get an empty board for that scope rather than an error.
+   */
+  async getLeaderboard(
+    request: LeaderboardRequestDto,
+    userId?: string,
+  ): Promise<LeaderboardResponseDto> {
     const page = request.page && request.page > 0 ? request.page : 1;
     const pageSize = request.pageSize && request.pageSize > 0 ? request.pageSize : 20;
+    const scope = request.scope ?? LeaderboardScope.Global;
 
-    const countRaw = await this.sessions
-      .createQueryBuilder('s')
-      .select('COUNT(DISTINCT s.user_id)', 'cnt')
-      .where('s.ended_at IS NOT NULL')
-      .getRawOne<{ cnt: string }>();
-    const totalCount = Number(countRaw?.cnt ?? 0);
+    // Resolve the geo filter from the caller's profile.
+    let filterSql = '';
+    const filterParams: unknown[] = [];
+    if (scope !== LeaderboardScope.Global && userId) {
+      const me: Array<{ country_id: number | null; region_id: number | null }> =
+        await this.sessions.manager.query(
+          'SELECT country_id, region_id FROM sys_user WHERE id = $1',
+          [userId],
+        );
+      const meRow = me[0];
+      if (scope === LeaderboardScope.Country) {
+        // No country on profile → empty board (nothing to compare against).
+        if (meRow?.country_id == null) return { totalCount: 0, page, pageSize, items: [] };
+        filterSql = 'AND u.country_id = $1';
+        filterParams.push(meRow.country_id);
+      } else {
+        if (meRow?.region_id == null) return { totalCount: 0, page, pageSize, items: [] };
+        filterSql = 'AND u.region_id = $1';
+        filterParams.push(meRow.region_id);
+      }
+    }
 
-    const rows = await this.sessions
-      .createQueryBuilder('s')
-      .innerJoin(User, 'u', 'u.id = s.user_id')
-      .select('u.username', 'username')
-      .addSelect('SUM(s.total_distance_meters)', 'totaldistance')
-      .where('s.ended_at IS NOT NULL')
-      .groupBy('u.id')
-      .orderBy('SUM(s.total_distance_meters)', 'DESC')
-      .offset((page - 1) * pageSize)
-      .limit(pageSize)
-      .getRawMany<{ username: string; totaldistance: string }>();
+    const countRows: Array<{ cnt: string }> = await this.sessions.manager.query(
+      `SELECT COUNT(DISTINCT s.user_id) AS cnt
+         FROM game_run_session s
+         JOIN sys_user u ON u.id = s.user_id
+        WHERE s.ended_at IS NOT NULL ${filterSql}`,
+      filterParams,
+    );
+    const totalCount = Number(countRows[0]?.cnt ?? 0);
 
-    let rank = (page - 1) * pageSize + 1;
+    const offset = (page - 1) * pageSize;
+    const rows: Array<{ username: string; totaldistance: string }> =
+      await this.sessions.manager.query(
+        `SELECT u.username AS username, SUM(s.total_distance_meters) AS totaldistance
+           FROM game_run_session s
+           JOIN sys_user u ON u.id = s.user_id
+          WHERE s.ended_at IS NOT NULL ${filterSql}
+          GROUP BY u.id, u.username
+          ORDER BY SUM(s.total_distance_meters) DESC
+          LIMIT ${pageSize} OFFSET ${offset}`,
+        filterParams,
+      );
+
+    let rank = offset + 1;
     const items = rows.map((x) => ({
       rank: rank++,
       username: x.username,

@@ -40,6 +40,42 @@ export class User {
   @Column({ name: 'stateid' })
   stateId: number;
 
+  // Unique public numeric id used for friend search / sharing (Phase G); null until assigned.
+  @Column({ name: 'zonic_id', type: 'int', nullable: true })
+  zonicId: number | null;
+
+  // ─── Onboarding / profile fields (Phase D). Single source of truth for the app. ───
+  @Column({ name: 'country_id', type: 'int', nullable: true })
+  countryId: number | null;
+
+  @Column({ name: 'region_id', type: 'int', nullable: true })
+  regionId: number | null;
+
+  @Column({ name: 'age', type: 'int', nullable: true })
+  age: number | null;
+
+  @Column({ name: 'height_cm', type: 'double precision', nullable: true })
+  heightCm: number | null;
+
+  @Column({ name: 'weight_kg', type: 'double precision', nullable: true })
+  weightKg: number | null;
+
+  @Column({ name: 'gender', type: 'varchar', nullable: true })
+  gender: string | null;
+
+  @Column({ name: 'level', type: 'varchar', nullable: true })
+  level: string | null;
+
+  // Privacy zone (Phase N): hide the home area on shared maps; route points inside are clipped.
+  @Column({ name: 'privacy_lat', type: 'double precision', nullable: true })
+  privacyLat: number | null;
+
+  @Column({ name: 'privacy_lng', type: 'double precision', nullable: true })
+  privacyLng: number | null;
+
+  @Column({ name: 'privacy_radius_m', type: 'double precision', nullable: true })
+  privacyRadiusM: number | null;
+
   @Column({ name: 'dateofcreated', type: 'timestamp', default: () => 'now()' })
   dateOfCreated: Date;
 }

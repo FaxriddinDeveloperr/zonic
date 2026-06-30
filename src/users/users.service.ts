@@ -89,6 +89,38 @@ export class UsersService {
       recolor = true;
     }
 
+    // ─── Onboarding / profile fields (Phase D) ───
+    // Cascade: changing the country clears the region unless a new region is sent in the
+    // same request (TZ: "Davlat o'zgartirgan ondayoq, Hudud avtomatik tozalanishi").
+    let countryChanged = false;
+    if (dto.countryId !== undefined) {
+      countryChanged = dto.countryId !== user.countryId;
+      user.countryId = dto.countryId;
+    }
+    if (dto.regionId !== undefined) {
+      user.regionId = dto.regionId;
+    } else if (countryChanged) {
+      user.regionId = null;
+    }
+    if (user.regionId != null) {
+      const rows: Array<{ countryid: number }> = await this.users.manager.query(
+        'SELECT countryid FROM info_region WHERE id = $1',
+        [user.regionId],
+      );
+      if (rows.length === 0) throw badRequest(['Region not found.']);
+      if (user.countryId != null && Number(rows[0].countryid) !== user.countryId) {
+        throw badRequest(['Region does not belong to the selected country.']);
+      }
+    }
+    if (dto.age !== undefined) user.age = dto.age;
+    if (dto.heightCm !== undefined) user.heightCm = dto.heightCm;
+    if (dto.weightKg !== undefined) user.weightKg = dto.weightKg;
+    if (dto.gender !== undefined) user.gender = dto.gender;
+    if (dto.level !== undefined) user.level = dto.level;
+    if (dto.privacyLat !== undefined) user.privacyLat = dto.privacyLat;
+    if (dto.privacyLng !== undefined) user.privacyLng = dto.privacyLng;
+    if (dto.privacyRadiusM !== undefined) user.privacyRadiusM = dto.privacyRadiusM;
+
     await this.users.save(user);
 
     // Color is the user's personal/team color → all their zones adopt it.

@@ -14,6 +14,8 @@ import { State } from './entities/state.entity';
 import { Country } from './entities/country.entity';
 import { Region } from './entities/region.entity';
 import { District } from './entities/district.entity';
+import { UserAchievement } from './entities/user-achievement.entity';
+import { StepActivity } from './entities/step-activity.entity';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ZonesModule } from './zones/zones.module';
@@ -21,6 +23,18 @@ import { RunSessionModule } from './run-sessions/run-session.module';
 import { FreeRunModule } from './free-run/free-run.module';
 import { ManualModule } from './manual/manual.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { StatsModule } from './stats/stats.module';
+import { StepsModule } from './steps/steps.module';
+import { ActivityModule } from './activity/activity.module';
+import { WalletModule } from './wallet/wallet.module';
+import { MarketModule } from './market/market.module';
+import { FriendsModule } from './friends/friends.module';
+import { ChallengesModule } from './challenges/challenges.module';
+import { SubscriptionModule } from './subscription/subscription.module';
+import { PaymentModule } from './payment/payment.module';
+import { FeedModule } from './feed/feed.module';
+import { CoachModule } from './coach/coach.module';
+import { ClanModule } from './clan/clan.module';
 
 const ENTITIES = [
   User,
@@ -35,6 +49,8 @@ const ENTITIES = [
   Country,
   Region,
   District,
+  UserAchievement,
+  StepActivity,
 ];
 
 @Module({
@@ -60,6 +76,18 @@ const ENTITIES = [
     FreeRunModule,
     ManualModule,
     RealtimeModule,
+    StatsModule,
+    StepsModule,
+    ActivityModule,
+    WalletModule,
+    MarketModule,
+    FriendsModule,
+    ChallengesModule,
+    SubscriptionModule,
+    PaymentModule,
+    FeedModule,
+    CoachModule,
+    ClanModule,
   ],
 })
 export class AppModule {}

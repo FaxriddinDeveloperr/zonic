@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { ReadStream } from 'fs';
 import { User } from '../entities/user.entity';
 import { badRequest } from '../common/validation-problem';
+import { bmiCategory, caloriePerKm, computeBmi } from '../common/helpers/health';
 import { MeDto } from './dto/me.dto';
 
 /** Minimal shape of a multer in-memory file (avoids a hard dep on @types/multer). */
@@ -48,13 +49,40 @@ export class ProfileService {
   async getMe(userId: string): Promise<MeDto> {
     const user = await this.users.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
+    const bmi = computeBmi(user.heightCm, user.weightKg);
     return {
       username: user.username,
       email: user.email,
       phone: user.phone,
       avatarFileId: user.avatarFileId,
       color: user.color,
+      countryId: user.countryId,
+      regionId: user.regionId,
+      age: user.age,
+      heightCm: user.heightCm,
+      weightKg: user.weightKg,
+      gender: user.gender,
+      level: user.level,
+      bmi,
+      bmiCategory: bmiCategory(bmi),
+      caloriePerKm: caloriePerKm(user.weightKg, user.gender),
+      onboardingCompleted: ProfileService.isOnboardingComplete(user),
+      privacyLat: user.privacyLat,
+      privacyLng: user.privacyLng,
+      privacyRadiusM: user.privacyRadiusM,
     };
+  }
+
+  /** Required onboarding fields per the TZ — UI routes to onboarding until all are set. */
+  private static isOnboardingComplete(u: User): boolean {
+    return (
+      u.countryId != null &&
+      u.age != null &&
+      u.heightCm != null &&
+      u.weightKg != null &&
+      u.gender != null &&
+      u.level != null
+    );
   }
 
   async saveAvatar(userId: string, file: UploadedImage | undefined): Promise<{ fileId: string }> {
