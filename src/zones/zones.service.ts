@@ -118,6 +118,11 @@ export class ZonesService {
   }
 
   async getDetails(id: string): Promise<ZoneDetailsDto> {
+    // Tolerate legacy composite ids ("<uuid>_<part>") and reject non-UUIDs with a clean 404
+    // instead of letting Postgres throw "invalid input syntax for type uuid" (a 500).
+    const zoneId = ZonesService.normalizeUuid(id);
+    if (!zoneId) throw new NotFoundException('Zone not found.');
+
     const rows: Array<{
       zoneid: string;
       owneruserid: string;
@@ -131,7 +136,7 @@ export class ZonesService {
          FROM game_territory t
          JOIN sys_user u ON u.id = t.owner_user_id
         WHERE t.id = $1`,
-      [id],
+      [zoneId],
     );
     const r = rows[0];
     if (!r) throw new NotFoundException('Zone not found.');
@@ -337,5 +342,13 @@ export class ZonesService {
   private static round(v: number, d: number): number {
     const f = 10 ** d;
     return Math.round(v * f) / f;
+  }
+
+  /** Accept a plain UUID or a legacy "<uuid>_<part>" id; return the UUID, or null if invalid. */
+  private static normalizeUuid(raw: string): string | null {
+    const candidate = raw.includes('_') ? raw.slice(0, raw.indexOf('_')) : raw;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate)
+      ? candidate
+      : null;
   }
 }

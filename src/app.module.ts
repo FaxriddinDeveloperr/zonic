@@ -67,6 +67,16 @@ const ENTITIES = [
         database: config.get<string>('database.database'),
         entities: ENTITIES,
         synchronize: false, // existing schema — never auto-alter
+        // Resilience to transient DB drops ("Connection terminated unexpectedly"):
+        keepConnectionAlive: true,
+        retryAttempts: 10,
+        retryDelay: 3000,
+        extra: {
+          keepAlive: true, // TCP keep-alive so idle pool clients aren't dropped by NAT/firewalls
+          max: 20, // pool size
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 10000,
+        },
       }),
     }),
     AuthModule,
