@@ -216,17 +216,24 @@ export class FriendsService {
       `SELECT zonic_id FROM sys_user WHERE id = $1`,
       [userId],
     );
-    if (u?.zonic_id != null) return u.zonic_id;
-    // Assign a unique 6-digit id (retry on the rare collision).
+    if (u?.zonic_id != null) return Number(u.zonic_id);
+    // Assign a unique 6-digit id (retry on the rare collision). The `zonic_id IS NULL` guard
+    // prevents overwriting a value set concurrently. NOTE: TypeORM's query() returns
+    // [rows, affectedCount] for UPDATE ... RETURNING (unlike INSERT), so we re-SELECT to read
+    // the value reliably instead of parsing the UPDATE result.
     for (let i = 0; i < 20; i++) {
       const candidate = 100000 + Math.floor(Math.random() * 900000);
-      const res = await this.dataSource.query(
+      await this.dataSource.query(
         `UPDATE sys_user SET zonic_id = $2
-          WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM sys_user WHERE zonic_id = $2)
-        RETURNING zonic_id`,
+          WHERE id = $1 AND zonic_id IS NULL
+            AND NOT EXISTS (SELECT 1 FROM sys_user WHERE zonic_id = $2)`,
         [userId, candidate],
       );
-      if (res.length > 0) return res[0].zonic_id;
+      const [check] = await this.dataSource.query(
+        `SELECT zonic_id FROM sys_user WHERE id = $1`,
+        [userId],
+      );
+      if (check?.zonic_id != null) return Number(check.zonic_id);
     }
     throw badRequest(['Could not allocate a ZONIC-ID, please retry.']);
   }
