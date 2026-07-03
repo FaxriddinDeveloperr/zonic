@@ -33,6 +33,23 @@ export class User {
   @Column({ name: 'avatar_file_id', type: 'varchar', nullable: true })
   avatarFileId: string | null;
 
+  // Identifier of the uploaded cover/banner file (UploadCover → DownloadCover); null until set.
+  @Column({ name: 'cover_file_id', type: 'varchar', nullable: true })
+  coverFileId: string | null;
+
+  // Profile edit fields (BACKEND_TODO §1).
+  @Column({ name: 'bio', type: 'varchar', nullable: true })
+  bio: string | null;
+
+  @Column({ name: 'instagram_username', type: 'varchar', nullable: true })
+  instagramUsername: string | null;
+
+  @Column({ name: 'strava_url', type: 'varchar', nullable: true })
+  stravaUrl: string | null;
+
+  @Column({ name: 'selected_badge_code', type: 'varchar', nullable: true })
+  selectedBadgeCode: string | null;
+
   // Personal/team color (hex) applied to all of the user's territory zones; null → default.
   @Column({ name: 'color', type: 'varchar', nullable: true })
   color: string | null;

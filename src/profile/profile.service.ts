@@ -41,9 +41,11 @@ const EXT_TO_MIME: Record<string, string> = {
 @Injectable()
 export class ProfileService {
   private readonly avatarDir = join(process.cwd(), 'uploads', 'avatars');
+  private readonly coverDir = join(process.cwd(), 'uploads', 'cover');
 
   constructor(@InjectRepository(User) private readonly users: Repository<User>) {
     mkdirSync(this.avatarDir, { recursive: true });
+    mkdirSync(this.coverDir, { recursive: true });
   }
 
   async getMe(userId: string): Promise<MeDto> {
@@ -55,6 +57,11 @@ export class ProfileService {
       email: user.email,
       phone: user.phone,
       avatarFileId: user.avatarFileId,
+      coverFileId: user.coverFileId,
+      bio: user.bio,
+      instagramUsername: user.instagramUsername,
+      stravaUrl: user.stravaUrl,
+      selectedBadgeCode: user.selectedBadgeCode,
       color: user.color,
       countryId: user.countryId,
       regionId: user.regionId,
@@ -85,7 +92,29 @@ export class ProfileService {
     );
   }
 
-  async saveAvatar(userId: string, file: UploadedImage | undefined): Promise<{ fileId: string }> {
+  saveAvatar(userId: string, file: UploadedImage | undefined): Promise<{ fileId: string }> {
+    return this.saveImage(userId, file, this.avatarDir, (u, id) => (u.avatarFileId = id));
+  }
+
+  saveCover(userId: string, file: UploadedImage | undefined): Promise<{ fileId: string }> {
+    return this.saveImage(userId, file, this.coverDir, (u, id) => (u.coverFileId = id));
+  }
+
+  /** Validates fileId (no path traversal) and returns an open stream + content type. */
+  openAvatar(fileId: string | undefined): { stream: ReadStream; contentType: string } {
+    return this.openImage(fileId, this.avatarDir, 'Avatar');
+  }
+
+  openCover(fileId: string | undefined): { stream: ReadStream; contentType: string } {
+    return this.openImage(fileId, this.coverDir, 'Cover');
+  }
+
+  private async saveImage(
+    userId: string,
+    file: UploadedImage | undefined,
+    dir: string,
+    setFileId: (u: User, id: string) => void,
+  ): Promise<{ fileId: string }> {
     if (!file || !file.buffer?.length) {
       throw badRequest(['No file uploaded (expected form field "file").']);
     }
@@ -98,16 +127,19 @@ export class ProfileService {
     if (!user) throw new NotFoundException('User not found.');
 
     const fileId = `${randomUUID()}${ext}`;
-    writeFileSync(join(this.avatarDir, fileId), file.buffer);
+    writeFileSync(join(dir, fileId), file.buffer);
 
-    user.avatarFileId = fileId;
+    setFileId(user, fileId);
     await this.users.save(user);
 
     return { fileId };
   }
 
-  /** Validates fileId (no path traversal) and returns an open stream + content type. */
-  openAvatar(fileId: string | undefined): { stream: ReadStream; contentType: string } {
+  private openImage(
+    fileId: string | undefined,
+    dir: string,
+    kind: string,
+  ): { stream: ReadStream; contentType: string } {
     if (!fileId) throw badRequest(['fileId is required.']);
     const safe = basename(fileId); // strip any path components
     if (safe !== fileId || !/^[\w.-]+$/.test(safe)) {
@@ -118,8 +150,8 @@ export class ProfileService {
     const ext = dot >= 0 ? safe.slice(dot).toLowerCase() : '';
     const contentType = EXT_TO_MIME[ext] ?? 'application/octet-stream';
 
-    const full = join(this.avatarDir, safe);
-    if (!existsSync(full)) throw new NotFoundException('Avatar not found.');
+    const full = join(dir, safe);
+    if (!existsSync(full)) throw new NotFoundException(`${kind} not found.`);
 
     return { stream: createReadStream(full), contentType };
   }

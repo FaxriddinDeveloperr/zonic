@@ -98,6 +98,31 @@ export class UpdateMeDto {
   @IsIn(['beginner', 'professional'])
   level?: string;
 
+  // ─── Profile edit fields (BACKEND_TODO §1). Send null/'' to clear. ───
+  @ApiPropertyOptional({ maxLength: 500, description: 'Bio / status text' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  bio?: string;
+
+  @ApiPropertyOptional({ maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  instagramUsername?: string;
+
+  @ApiPropertyOptional({ maxLength: 300 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  stravaUrl?: string;
+
+  @ApiPropertyOptional({ maxLength: 60, description: 'Chosen badge/title code' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  selectedBadgeCode?: string;
+
   // ─── Privacy zone (Phase N). Send all three to set; send null to clear. ───
   @ApiPropertyOptional({ example: 41.31, description: 'Privacy-zone center latitude' })
   @IsOptional()

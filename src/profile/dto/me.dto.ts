@@ -13,6 +13,21 @@ export class MeDto {
   @ApiProperty({ example: 'a1b2c3d4.jpg', nullable: true })
   avatarFileId: string | null;
 
+  @ApiProperty({ example: 'e5f6g7h8.jpg', nullable: true, description: 'Cover/banner image id' })
+  coverFileId: string | null;
+
+  @ApiProperty({ example: 'Sport meni hayotim', nullable: true, description: 'Bio / status text' })
+  bio: string | null;
+
+  @ApiProperty({ example: 'ali_runner', nullable: true })
+  instagramUsername: string | null;
+
+  @ApiProperty({ example: 'https://strava.com/athletes/123', nullable: true })
+  stravaUrl: string | null;
+
+  @ApiProperty({ example: 'dist_100', nullable: true, description: 'Chosen badge/title code' })
+  selectedBadgeCode: string | null;
+
   @ApiProperty({ example: '#FF0000', nullable: true, description: 'Personal/team zone color' })
   color: string | null;
 

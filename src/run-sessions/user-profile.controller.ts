@@ -32,6 +32,7 @@ import { LeaderboardResponseDto } from './dto/leaderboard-response.dto';
 import { MeDto, UploadAvatarResponseDto } from '../profile/dto/me.dto';
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_COVER_BYTES = 8 * 1024 * 1024; // 8 MB (cover images are larger)
 
 @ApiTags('UserProfile')
 @ApiBearerAuth()
@@ -71,6 +72,30 @@ export class UserProfileController {
   @ApiQuery({ name: 'fileId', required: true })
   downloadAvatar(@Query('fileId') fileId: string): StreamableFile {
     const { stream, contentType } = this.profileService.openAvatar(fileId);
+    return new StreamableFile(stream, { type: contentType });
+  }
+
+  @Post('UploadCover')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Upload a cover/banner image (multipart form field "file")' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } },
+  })
+  @ApiOkResponse({ type: UploadAvatarResponseDto })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_COVER_BYTES } }))
+  uploadCover(
+    @CurrentUser() user: AuthUser,
+    @UploadedFile() file: UploadedImage,
+  ): Promise<{ fileId: string }> {
+    return this.profileService.saveCover(user.userId, file);
+  }
+
+  @Get('DownloadCover')
+  @ApiOperation({ summary: 'Stream a cover/banner image by fileId' })
+  @ApiQuery({ name: 'fileId', required: true })
+  downloadCover(@Query('fileId') fileId: string): StreamableFile {
+    const { stream, contentType } = this.profileService.openCover(fileId);
     return new StreamableFile(stream, { type: contentType });
   }
 
