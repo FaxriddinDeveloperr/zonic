@@ -38,6 +38,18 @@ export class ClanDto {
   @ApiProperty({ example: 12 })
   memberCount: number;
 
+  @ApiProperty({ example: 12, description: 'Clan level (derived from totalXp)' })
+  level: number;
+
+  @ApiProperty({ example: 4500, description: 'XP into the current level' })
+  xp: number;
+
+  @ApiProperty({ example: 10000, description: 'XP needed to reach the next level' })
+  xpToNextLevel: number;
+
+  @ApiProperty({ example: 125700, description: "Sum of members' lifetime XP" })
+  totalXp: number;
+
   @ApiProperty({ example: '2026-06-30T10:00:00.000Z' })
   createdAt: string;
 }
@@ -54,6 +66,12 @@ export class ClanMemberDto {
 
   @ApiProperty({ example: 'member', description: "'leader' | 'member'" })
   role: string;
+
+  @ApiProperty({ example: 45, description: "Member's own level (from lifetime XP)" })
+  level: number;
+
+  @ApiProperty({ example: 4523, description: "Member's XP earned in the last 7 days" })
+  weeklyXp: number;
 
   @ApiProperty({ example: '2026-06-30T10:00:00.000Z' })
   joinedAt: string;

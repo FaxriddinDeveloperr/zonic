@@ -17,6 +17,8 @@ import { StatsDimension, StatsPeriod } from './dto/stats-query.dto';
 import { StatsResponseDto, StatsSummaryDto } from './dto/stats-response.dto';
 import { PersonalBestsResponseDto, PersonalBestDto } from './dto/personal-bests.dto';
 import { AchievementsResponseDto, AchievementDto } from './dto/achievements.dto';
+import { PublicProfileDto } from './dto/public-profile.dto';
+import { NotFoundException } from '@nestjs/common';
 
 const round = (v: number, d: number): number => {
   const f = 10 ** d;
@@ -35,6 +37,7 @@ const emptySummary = (): StatsSummaryDto => ({
   avgAreaKm2: 0,
   totalSteps: 0,
   avgSteps: 0,
+  currentStreakDays: 0,
 });
 
 interface RunRow {
@@ -68,6 +71,7 @@ export class StatsService {
     const buckets = StatsService.buildBuckets(period);
     const since = buckets[0].start;
 
+    let res: StatsResponseDto;
     if (dimension === StatsDimension.Running) {
       const rows: RunRow[] = await this.dataSource.query(
         `SELECT started_at, distance_km, average_speed_kmh, pace_min_per_km, duration_seconds
@@ -75,27 +79,53 @@ export class StatsService {
           WHERE user_id = $1 AND started_at >= $2`,
         [userId, since],
       );
-      return this.runningStats(rows, period, buckets);
-    }
-
-    if (dimension === StatsDimension.Territory) {
+      res = this.runningStats(rows, period, buckets);
+    } else if (dimension === StatsDimension.Territory) {
       const rows: TerritoryRow[] = await this.dataSource.query(
         `SELECT captured_at, area_m2
            FROM game_territory
           WHERE owner_user_id = $1 AND captured_at >= $2`,
         [userId, since],
       );
-      return this.territoryStats(rows, period, buckets);
+      res = this.territoryStats(rows, period, buckets);
+    } else {
+      // Steps (Phase E) — pedometer sessions from game_step_activity.
+      const stepRows: StepRow[] = await this.dataSource.query(
+        `SELECT started_at, steps
+           FROM game_step_activity
+          WHERE user_id = $1 AND started_at >= $2`,
+        [userId, since],
+      );
+      res = this.stepsStats(stepRows, period, buckets);
     }
+    // Streak is a global metric (BACKEND_TODO §9) — same on every dimension.
+    res.summary.currentStreakDays = await this.computeStreak(userId);
+    return res;
+  }
 
-    // Steps (Phase E) — pedometer sessions from game_step_activity.
-    const stepRows: StepRow[] = await this.dataSource.query(
-      `SELECT started_at, steps
-         FROM game_step_activity
-        WHERE user_id = $1 AND started_at >= $2`,
-      [userId, since],
+  /** Consecutive days (UTC) with any activity, ending today or yesterday. */
+  private async computeStreak(userId: string): Promise<number> {
+    const rows: Array<{ d: string }> = await this.dataSource.query(
+      `SELECT DISTINCT d FROM (
+         SELECT (started_at AT TIME ZONE 'UTC')::date AS d FROM game_free_run WHERE user_id = $1
+         UNION SELECT (started_at AT TIME ZONE 'UTC')::date FROM game_step_activity WHERE user_id = $1
+         UNION SELECT (captured_at AT TIME ZONE 'UTC')::date FROM game_territory WHERE owner_user_id = $1
+       ) q ORDER BY d DESC`,
+      [userId],
     );
-    return this.stepsStats(stepRows, period, buckets);
+    if (rows.length === 0) return 0;
+    const days = new Set(rows.map((r) => r.d)); // 'YYYY-MM-DD'
+    const iso = (d: Date): string => d.toISOString().slice(0, 10);
+    const today = new Date();
+    const cursor = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    // Streak can end today OR yesterday (today not required to keep the streak alive yet).
+    if (!days.has(iso(cursor))) cursor.setUTCDate(cursor.getUTCDate() - 1);
+    let streak = 0;
+    while (days.has(iso(cursor))) {
+      streak++;
+      cursor.setUTCDate(cursor.getUTCDate() - 1);
+    }
+    return streak;
   }
 
   private stepsStats(rows: StepRow[], period: StatsPeriod, buckets: Bucket[]): StatsResponseDto {
@@ -271,6 +301,71 @@ export class StatsService {
       [userId, ...codes],
     );
     return inserted[0]?.unlocked_at ?? new Date();
+  }
+
+  // ─── C3. Public profile (BACKEND_TODO §3) ─────────────────────────────────
+  async getPublicProfile(zonicId: number): Promise<PublicProfileDto> {
+    const [u] = await this.dataSource.query(
+      `SELECT u.id::text, u.zonic_id, u.username, u.avatar_file_id, u.cover_file_id, u.bio,
+              u.selected_badge_code, r.fullname AS region_name
+         FROM sys_user u LEFT JOIN info_region r ON r.id = u.region_id
+        WHERE u.zonic_id = $1`,
+      [zonicId],
+    );
+    if (!u) throw new NotFoundException('No user with that ZONIC-ID.');
+    const userId = u.id;
+
+    const [agg] = await this.dataSource.query(
+      `SELECT
+         COALESCE((SELECT SUM(distance_km) FROM game_free_run WHERE user_id = $1), 0) AS dist,
+         COALESCE((SELECT AVG(NULLIF(pace_min_per_km, 0)) FROM game_free_run WHERE user_id = $1), 0) AS pace,
+         COALESCE((SELECT SUM(area_m2) FROM game_territory WHERE owner_user_id = $1), 0) / 1000000.0 AS area,
+         COALESCE((SELECT SUM(steps) FROM game_step_activity WHERE user_id = $1), 0) AS steps,
+         (SELECT COUNT(*) FROM game_free_run WHERE user_id = $1)
+           + (SELECT COUNT(*) FROM game_territory WHERE owner_user_id = $1)
+           + (SELECT COUNT(*) FROM game_step_activity WHERE user_id = $1) AS activity_count,
+         (SELECT COUNT(*) FROM game_territory WHERE owner_user_id = $1) AS terr_count`,
+      [userId],
+    );
+    const totalDistanceKm = round(Number(agg.dist), 2);
+    const totalAreaKm2 = round(Number(agg.area), 4);
+    const lifetimeXp = Number(agg.dist) * 100 + Number(agg.steps) * 0.5 + Number(agg.terr_count) * 200;
+
+    const achievements = ALL_ACHIEVEMENTS.map((def) => ({
+      type: def.type,
+      threshold: def.threshold,
+      isUnlocked: (def.type === 'distance' ? totalDistanceKm : totalAreaKm2) >= def.threshold,
+    }));
+
+    const recent: Array<{ started_at: Date; distance_km: number; duration_seconds: number }> =
+      await this.dataSource.query(
+        `SELECT started_at, distance_km, duration_seconds FROM game_free_run
+          WHERE user_id = $1 ORDER BY started_at DESC LIMIT 5`,
+        [userId],
+      );
+
+    return {
+      zonicId: u.zonic_id,
+      username: u.username,
+      avatarFileId: u.avatar_file_id,
+      coverFileId: u.cover_file_id,
+      level: Math.floor(lifetimeXp / 1000) + 1,
+      bio: u.bio,
+      selectedBadgeCode: u.selected_badge_code,
+      regionName: u.region_name,
+      stats: {
+        totalDistanceKm,
+        avgPaceMinPerKm: round(Number(agg.pace), 2),
+        totalAreaKm2,
+        activityCount: Number(agg.activity_count),
+      },
+      achievements,
+      recentActivities: recent.map((r) => ({
+        date: new Date(r.started_at).toISOString().slice(0, 10),
+        distanceKm: round(Number(r.distance_km), 2),
+        durationMinutes: Math.round(Number(r.duration_seconds) / 60),
+      })),
+    };
   }
 
   // ─── Chart bucketing ──────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import { StatsQueryDto } from './dto/stats-query.dto';
 import { StatsResponseDto } from './dto/stats-response.dto';
 import { PersonalBestsResponseDto } from './dto/personal-bests.dto';
 import { AchievementsResponseDto } from './dto/achievements.dto';
+import { PublicProfileDto, PublicProfileQueryDto } from './dto/public-profile.dto';
 
 @ApiTags('UserProfile')
 @ApiBearerAuth()
@@ -43,5 +44,12 @@ export class StatsController {
   @ApiOkResponse({ type: AchievementsResponseDto })
   getAchievements(@CurrentUser() user: AuthUser): Promise<AchievementsResponseDto> {
     return this.statsService.getAchievements(user.userId);
+  }
+
+  @Get('GetPublicProfile')
+  @ApiOperation({ summary: 'Another player’s public profile by ZONIC-ID (stats + achievements)' })
+  @ApiOkResponse({ type: PublicProfileDto })
+  getPublicProfile(@Query() q: PublicProfileQueryDto): Promise<PublicProfileDto> {
+    return this.statsService.getPublicProfile(q.userId);
   }
 }

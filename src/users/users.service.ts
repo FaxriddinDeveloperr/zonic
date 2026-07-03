@@ -132,4 +132,42 @@ export class UsersService {
       await this.zones.recolorUserZones(userId, dto.color);
     }
   }
+
+  /** Permanently delete the account after verifying the password. Removes all of the user's rows
+   *  from every referencing table (FK order), then the user, in one transaction. */
+  async deleteMe(userId: string, password: string): Promise<void> {
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    if (!verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+      throw badRequest(['Password is incorrect.']);
+    }
+
+    await this.users.manager.transaction(async (m) => {
+      const del = (sql: string): Promise<unknown> => m.query(sql, [userId]);
+      await del(`DELETE FROM game_notification WHERE user_id = $1`);
+      await del(`DELETE FROM game_post_like WHERE user_id = $1`);
+      await del(`DELETE FROM game_post_bookmark WHERE user_id = $1`);
+      await del(`DELETE FROM game_post_comment WHERE user_id = $1`);
+      await del(`DELETE FROM game_post WHERE user_id = $1`); // cascades images/likes/comments
+      await del(`DELETE FROM game_story WHERE user_id = $1`);
+      await del(`DELETE FROM game_friendship WHERE requester_id = $1 OR addressee_id = $1`);
+      await del(`DELETE FROM game_challenge WHERE challenger_id = $1 OR opponent_id = $1`);
+      await del(`DELETE FROM game_clan_member WHERE user_id = $1`);
+      await del(`DELETE FROM game_clan WHERE owner_user_id = $1`); // cascades remaining members
+      await del(`DELETE FROM market_purchase WHERE user_id = $1`);
+      await del(`DELETE FROM game_payment WHERE user_id = $1`);
+      await del(`DELETE FROM game_subscription WHERE user_id = $1`);
+      await del(`DELETE FROM game_user_wallet WHERE user_id = $1`);
+      await del(`DELETE FROM game_user_achievement WHERE user_id = $1`);
+      await del(`DELETE FROM game_step_activity WHERE user_id = $1`);
+      await del(`DELETE FROM game_free_run WHERE user_id = $1`);
+      await del(`DELETE FROM game_location_point WHERE user_id = $1`);
+      await del(`DELETE FROM game_user_location WHERE user_id = $1`);
+      await del(`DELETE FROM game_run_session WHERE user_id = $1`);
+      await del(`DELETE FROM game_zone WHERE owner_user_id = $1`);
+      await del(`DELETE FROM game_territory WHERE owner_user_id = $1`);
+      await del(`DELETE FROM sys_refresh_token WHERE user_id = $1`);
+      await del(`DELETE FROM sys_user WHERE id = $1`);
+    });
+  }
 }

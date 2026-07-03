@@ -1,5 +1,5 @@
 // Port of Zonic.Api/Controllers/UserController.cs  →  routes under /User
-import { Body, Controller, HttpCode, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -7,6 +7,7 @@ import { AuthUser } from '../auth/jwt.strategy';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
+import { DeleteMeDto } from './dto/delete-me.dto';
 import { RegisterResponseDto } from './dto/register-response.dto';
 
 @ApiTags('User')
@@ -32,5 +33,16 @@ export class UsersController {
   @ApiResponse({ status: 400, description: 'Validation error (duplicate username/email, wrong old password)' })
   updateMe(@CurrentUser() user: AuthUser, @Body() dto: UpdateMeDto): Promise<void> {
     return this.usersService.updateMe(user.userId, dto);
+  }
+
+  @Delete('Me')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Permanently delete the account (password confirmation required)' })
+  @ApiResponse({ status: 200, description: 'Deleted' })
+  @ApiResponse({ status: 400, description: 'Password incorrect' })
+  deleteMe(@CurrentUser() user: AuthUser, @Body() dto: DeleteMeDto): Promise<void> {
+    return this.usersService.deleteMe(user.userId, dto.password);
   }
 }

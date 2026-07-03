@@ -65,8 +65,40 @@ export class PostDto {
   @ApiProperty({ example: true })
   likedByMe: boolean;
 
+  @ApiProperty({ example: 2 })
+  commentCount: number;
+
+  @ApiProperty({ example: false })
+  bookmarkedByMe: boolean;
+
   @ApiProperty({ example: '2026-06-30T10:00:00.000Z' })
   createdAt: string;
+}
+
+export class AddCommentDto {
+  @ApiProperty({ example: 'Zoʻr natija! 🔥', maxLength: 1000 })
+  @IsString()
+  @MaxLength(1000)
+  text: string;
+}
+
+export class CommentDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty({ type: AuthorDto })
+  author: AuthorDto;
+
+  @ApiProperty()
+  text: string;
+
+  @ApiProperty({ example: '2026-06-30T10:05:00.000Z' })
+  createdAt: string;
+}
+
+export class CommentsResponseDto {
+  @ApiProperty({ type: [CommentDto] })
+  items: CommentDto[];
 }
 
 export class FeedResponseDto {

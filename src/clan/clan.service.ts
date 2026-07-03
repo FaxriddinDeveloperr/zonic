@@ -95,7 +95,18 @@ export class ClanService {
       `SELECT role FROM game_clan_member WHERE user_id = $1`,
       [userId],
     );
-    return { clan: await this.getClan(clanId), role, members: (await this.members(clanId)).members };
+    const [totalRow] = await this.dataSource.query(
+      `SELECT COALESCE(SUM(${ClanService.XP_EXPR('')}), 0) AS total_xp
+         FROM game_clan_member m WHERE m.clan_id = $1`,
+      [clanId],
+    );
+    const totalXp = Math.round(Number(totalRow?.total_xp ?? 0));
+    const [row] = await this.dataSource.query(`${ClanService.SELECT} WHERE c.id = $1`, [clanId]);
+    return {
+      clan: ClanService.toClan(row, totalXp),
+      role,
+      members: (await this.members(clanId)).members,
+    };
   }
 
   async members(clanId: string): Promise<ClanMembersDto> {
@@ -105,8 +116,12 @@ export class ClanService {
       zonic_id: number | null;
       role: string;
       joined_at: Date;
+      lifetime_xp: string;
+      weekly_xp: string;
     }> = await this.dataSource.query(
-      `SELECT m.user_id::text, u.username, u.zonic_id, m.role, m.joined_at
+      `SELECT m.user_id::text, u.username, u.zonic_id, m.role, m.joined_at,
+              ${ClanService.XP_EXPR('')}      AS lifetime_xp,
+              ${ClanService.XP_EXPR("AND ts >= now() - interval '7 days'")} AS weekly_xp
          FROM game_clan_member m JOIN sys_user u ON u.id = m.user_id
         WHERE m.clan_id = $1
         ORDER BY (m.role = 'leader') DESC, m.joined_at ASC`,
@@ -117,9 +132,26 @@ export class ClanService {
       username: r.username,
       zonicId: r.zonic_id,
       role: r.role,
+      level: ClanService.levelFromXp(Number(r.lifetime_xp), 1000),
+      weeklyXp: Math.round(Number(r.weekly_xp)),
       joinedAt: formatIso(new Date(r.joined_at)),
     }));
     return { members };
+  }
+
+  /** Lifetime/weekly XP expression for a clan member `m` (km×100 + steps×0.5 + territories×200). */
+  private static XP_EXPR(weekFilter: string): string {
+    const w = weekFilter.replace('ts', 'started_at');
+    const wt = weekFilter.replace('ts', 'captured_at');
+    return `(
+      COALESCE((SELECT SUM(distance_km) FROM game_free_run WHERE user_id = m.user_id ${w}), 0) * 100
+      + COALESCE((SELECT SUM(steps) FROM game_step_activity WHERE user_id = m.user_id ${w}), 0) * 0.5
+      + COALESCE((SELECT COUNT(*) FROM game_territory WHERE owner_user_id = m.user_id ${wt}), 0) * 200
+    )`;
+  }
+
+  private static levelFromXp(xp: number, step: number): number {
+    return Math.floor(xp / step) + 1;
   }
 
   async leaderboard(page: number, pageSize: number): Promise<ClanLeaderboardDto> {
@@ -170,13 +202,20 @@ export class ClanService {
            (SELECT COUNT(*) FROM game_clan_member WHERE clan_id = c.id) AS member_count
       FROM game_clan c`;
 
-  private static toClan(r: ClanRow): ClanDto {
+  private static readonly CLAN_LEVEL_STEP = 10000;
+
+  private static toClan(r: ClanRow, totalXp = 0): ClanDto {
+    const level = ClanService.levelFromXp(totalXp, ClanService.CLAN_LEVEL_STEP);
     return {
       id: r.id,
       name: r.name,
       color: r.color,
       ownerUserId: r.owner_user_id,
       memberCount: Number(r.member_count),
+      level,
+      xp: totalXp - (level - 1) * ClanService.CLAN_LEVEL_STEP,
+      xpToNextLevel: ClanService.CLAN_LEVEL_STEP,
+      totalXp,
       createdAt: formatIso(new Date(r.created_at)),
     };
   }

@@ -14,6 +14,8 @@ import { FriendsService } from '../friends/friends.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 import {
   AuthorDto,
+  CommentDto,
+  CommentsResponseDto,
   FeedOkDto,
   FeedResponseDto,
   PostDto,
@@ -147,12 +149,16 @@ export class FeedService {
       images: string[] | null;
       like_count: string;
       liked_by_me: boolean;
+      comment_count: string;
+      bookmarked_by_me: boolean;
     }> = await this.dataSource.query(
       `SELECT p.id::text, p.type, p.caption, p.created_at,
               u.id::text AS author_id, u.username, u.avatar_file_id,
               (SELECT array_agg(file_id ORDER BY ordinal) FROM game_post_image WHERE post_id = p.id) AS images,
               (SELECT COUNT(*) FROM game_post_like WHERE post_id = p.id) AS like_count,
-              EXISTS(SELECT 1 FROM game_post_like WHERE post_id = p.id AND user_id = $2) AS liked_by_me
+              EXISTS(SELECT 1 FROM game_post_like WHERE post_id = p.id AND user_id = $2) AS liked_by_me,
+              (SELECT COUNT(*) FROM game_post_comment WHERE post_id = p.id) AS comment_count,
+              EXISTS(SELECT 1 FROM game_post_bookmark WHERE post_id = p.id AND user_id = $2) AS bookmarked_by_me
          FROM game_post p
          JOIN sys_user u ON u.id = p.user_id
         WHERE p.id = ANY($1::uuid[])`,
@@ -170,8 +176,85 @@ export class FeedService {
         imageUrls: (r.images ?? []).map(imageUrl),
         likeCount: Number(r.like_count),
         likedByMe: r.liked_by_me,
+        commentCount: Number(r.comment_count),
+        bookmarkedByMe: r.bookmarked_by_me,
         createdAt: formatIso(new Date(r.created_at)),
       }));
+  }
+
+  // ─── Comments (BACKEND_TODO §7) ─────────────────────────────────────────────
+  async addComment(userId: string, postId: string, text: string): Promise<CommentDto> {
+    const [c]: Array<{ id: string; created_at: Date }> = await this.dataSource.query(
+      `INSERT INTO game_post_comment (post_id, user_id, text)
+       VALUES ($1, $2, $3) RETURNING id::text, created_at`,
+      [postId, userId, text],
+    );
+    const [u] = await this.dataSource.query(
+      `SELECT id::text, username, avatar_file_id FROM sys_user WHERE id = $1`,
+      [userId],
+    );
+    return {
+      id: c.id,
+      author: FeedService.author(u.id, u.username, u.avatar_file_id),
+      text,
+      createdAt: formatIso(new Date(c.created_at)),
+    };
+  }
+
+  async comments(postId: string, page: number, pageSize: number): Promise<CommentsResponseDto> {
+    const rows: Array<{
+      id: string;
+      text: string;
+      created_at: Date;
+      author_id: string;
+      username: string;
+      avatar_file_id: string | null;
+    }> = await this.dataSource.query(
+      `SELECT c.id::text, c.text, c.created_at,
+              u.id::text AS author_id, u.username, u.avatar_file_id
+         FROM game_post_comment c JOIN sys_user u ON u.id = c.user_id
+        WHERE c.post_id = $1
+        ORDER BY c.created_at ASC
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
+      [postId],
+    );
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        author: FeedService.author(r.author_id, r.username, r.avatar_file_id),
+        text: r.text,
+        createdAt: formatIso(new Date(r.created_at)),
+      })),
+    };
+  }
+
+  // ─── Bookmarks (BACKEND_TODO §7) ────────────────────────────────────────────
+  async bookmark(userId: string, postId: string): Promise<FeedOkDto> {
+    await this.dataSource.query(
+      `INSERT INTO game_post_bookmark (post_id, user_id) VALUES ($1, $2)
+       ON CONFLICT (post_id, user_id) DO NOTHING`,
+      [postId, userId],
+    );
+    return { ok: true };
+  }
+
+  async unbookmark(userId: string, postId: string): Promise<FeedOkDto> {
+    await this.dataSource.query(
+      `DELETE FROM game_post_bookmark WHERE post_id = $1 AND user_id = $2`,
+      [postId, userId],
+    );
+    return { ok: true };
+  }
+
+  async bookmarks(userId: string, page: number, pageSize: number): Promise<FeedResponseDto> {
+    const ids: Array<{ id: string }> = await this.dataSource.query(
+      `SELECT post_id::text AS id FROM game_post_bookmark
+        WHERE user_id = $1 ORDER BY created_at DESC
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
+      [userId],
+    );
+    const items = await this.getFeedPosts(userId, ids.map((r) => r.id));
+    return { items };
   }
 
   // ─── Stories ──────────────────────────────────────────────────────────────

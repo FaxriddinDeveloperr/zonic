@@ -7,8 +7,11 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { EconomyConfig } from '../config/configuration';
 import { badRequest } from '../common/validation-problem';
+import { formatIso } from '../common/helpers/datetime';
 import { WalletService } from '../wallet/wallet.service';
 import {
+  InventoryItemDto,
+  InventoryResponseDto,
   MarketItemDto,
   MarketItemsResponseDto,
   PurchaseResultDto,
@@ -34,19 +37,68 @@ export class MarketService {
       description: string | null;
       price_tanga: string;
       category: string | null;
+      currency: string;
+      is_premium: boolean;
+      duration: string;
+      discount_label: string | null;
     }> = await this.dataSource.query(
-      `SELECT id::text, code, title, description, price_tanga, category
-         FROM market_item WHERE is_active = true ORDER BY price_tanga ASC`,
+      `SELECT id::text, code, title, description, price_tanga, category,
+              currency, is_premium, duration, discount_label
+         FROM market_item WHERE is_active = true ORDER BY is_premium ASC, price_tanga ASC`,
     );
     const items: MarketItemDto[] = rows.map((r) => ({
       id: r.id,
       code: r.code,
-      title: r.title,
+      name: r.title,
       description: r.description,
-      priceTanga: Number(r.price_tanga),
+      price: Number(r.price_tanga),
+      currency: r.currency,
       category: r.category,
+      isPremium: r.is_premium,
+      duration: r.duration,
+      discountLabel: r.discount_label,
     }));
     return { items };
+  }
+
+  /** The caller's purchased items with computed expiry from each item's duration. */
+  async inventory(userId: string): Promise<InventoryResponseDto> {
+    const rows: Array<{
+      code: string;
+      title: string;
+      category: string | null;
+      duration: string;
+      purchased_at: Date;
+    }> = await this.dataSource.query(
+      `SELECT i.code, i.title, i.category, i.duration, p.purchased_at
+         FROM market_purchase p JOIN market_item i ON i.id = p.item_id
+        WHERE p.user_id = $1
+        ORDER BY p.purchased_at DESC`,
+      [userId],
+    );
+    const items: InventoryItemDto[] = rows.map((r) => {
+      const purchased = new Date(r.purchased_at);
+      return {
+        code: r.code,
+        name: r.title,
+        category: r.category,
+        purchasedAt: formatIso(purchased),
+        expiresAt: MarketService.expiryOf(purchased, r.duration),
+      };
+    });
+    return { items };
+  }
+
+  /** duration → ISO expiry (null for 'permanent'). */
+  private static expiryOf(from: Date, duration: string): string | null {
+    const ms: Record<string, number> = {
+      '1h': 3600e3,
+      '1d': 86400e3,
+      '1m': 30 * 86400e3,
+      '3m': 90 * 86400e3,
+    };
+    const add = ms[duration];
+    return add ? formatIso(new Date(from.getTime() + add)) : null;
   }
 
   async purchase(userId: string, itemCode: string, useXp: number): Promise<PurchaseResultDto> {

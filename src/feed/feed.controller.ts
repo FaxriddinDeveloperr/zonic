@@ -29,6 +29,9 @@ import { AuthUser } from '../auth/jwt.strategy';
 import { UploadedImage } from '../profile/profile.service';
 import { FeedService } from './feed.service';
 import {
+  AddCommentDto,
+  CommentDto,
+  CommentsResponseDto,
   CreatePostDto,
   CreateStoryDto,
   FeedOkDto,
@@ -114,5 +117,56 @@ export class FeedController {
   @ApiOkResponse({ type: StoriesResponseDto })
   storiesFeed(@CurrentUser() user: AuthUser): Promise<StoriesResponseDto> {
     return this.feed.stories(user.userId);
+  }
+
+  // ─── Comments (BACKEND_TODO §7) ───
+  @Post('Posts/:id/Comments')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Add a comment to a post' })
+  @ApiOkResponse({ type: CommentDto })
+  addComment(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: AddCommentDto,
+  ): Promise<CommentDto> {
+    return this.feed.addComment(user.userId, id, dto.text);
+  }
+
+  @Get('Posts/:id/Comments')
+  @ApiOperation({ summary: 'List a post’s comments' })
+  @ApiOkResponse({ type: CommentsResponseDto })
+  comments(
+    @Param('id') id: string,
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '20',
+  ): Promise<CommentsResponseDto> {
+    return this.feed.comments(id, Math.max(1, Number(page) || 1), Math.max(1, Number(pageSize) || 20));
+  }
+
+  // ─── Bookmarks (BACKEND_TODO §7) ───
+  @Post('Posts/:id/Bookmark')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Bookmark (save) a post' })
+  @ApiOkResponse({ type: FeedOkDto })
+  bookmark(@CurrentUser() user: AuthUser, @Param('id') id: string): Promise<FeedOkDto> {
+    return this.feed.bookmark(user.userId, id);
+  }
+
+  @Delete('Posts/:id/Bookmark')
+  @ApiOperation({ summary: 'Remove a bookmark' })
+  @ApiOkResponse({ type: FeedOkDto })
+  unbookmark(@CurrentUser() user: AuthUser, @Param('id') id: string): Promise<FeedOkDto> {
+    return this.feed.unbookmark(user.userId, id);
+  }
+
+  @Get('Bookmarks')
+  @ApiOperation({ summary: "The caller's bookmarked posts" })
+  @ApiOkResponse({ type: FeedResponseDto })
+  bookmarksList(
+    @CurrentUser() user: AuthUser,
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '20',
+  ): Promise<FeedResponseDto> {
+    return this.feed.bookmarks(user.userId, Math.max(1, Number(page) || 1), Math.max(1, Number(pageSize) || 20));
   }
 }

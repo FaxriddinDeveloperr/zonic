@@ -40,6 +40,9 @@ export class StatsSummaryDto {
 
   @ApiProperty({ example: 0, description: 'average steps per day' })
   avgSteps: number;
+
+  @ApiProperty({ example: 5, description: 'Consecutive days with activity ending today/yesterday' })
+  currentStreakDays: number;
 }
 
 export class StatsChartPointDto {

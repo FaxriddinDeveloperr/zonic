@@ -5,6 +5,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { formatIso } from '../common/helpers/datetime';
 import { badRequest } from '../common/validation-problem';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   FriendDto,
   FriendRequestItemDto,
@@ -17,7 +18,10 @@ import {
 
 @Injectable()
 export class FriendsService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /** Ensure the caller has a ZONIC-ID (lazy assign), returning their public card. */
   async me(userId: string): Promise<MyIdDto> {
@@ -64,11 +68,20 @@ export class FriendsService {
       throw badRequest(['Request already pending.']);
     }
 
-    await this.dataSource.query(
-      `INSERT INTO game_friendship (requester_id, addressee_id, status) VALUES ($1, $2, 'pending')`,
+    const [row]: Array<{ id: string }> = await this.dataSource.query(
+      `INSERT INTO game_friendship (requester_id, addressee_id, status)
+       VALUES ($1, $2, 'pending') RETURNING id::text`,
       [userId, target.userId],
     );
-    // (Push notification to the addressee would fire here — see ChallengeService note.)
+    // Notify the addressee (feeds the Notifications page + friend-request Accept button).
+    const me = await this.me(userId);
+    await this.notifications.create(
+      target.userId,
+      'friend_request',
+      `${me.username} sizga do'stlik so'rovi yubordi`,
+      null,
+      { requestId: row.id, fromUserId: userId, fromZonicId: me.zonicId, fromUsername: me.username },
+    );
     return { ok: true, status: 'pending' };
   }
 

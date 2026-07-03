@@ -6,6 +6,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthUser } from '../auth/jwt.strategy';
 import { MarketService } from './market.service';
 import {
+  InventoryResponseDto,
   MarketItemsResponseDto,
   PurchaseRequestDto,
   PurchaseResultDto,
@@ -19,10 +20,17 @@ export class MarketController {
   constructor(private readonly marketService: MarketService) {}
 
   @Get('Items')
-  @ApiOperation({ summary: 'List active market items' })
+  @ApiOperation({ summary: 'Full catalog of active market items' })
   @ApiOkResponse({ type: MarketItemsResponseDto })
   items(): Promise<MarketItemsResponseDto> {
     return this.marketService.listItems();
+  }
+
+  @Get('Inventory')
+  @ApiOperation({ summary: "The caller's purchased items (with expiry)" })
+  @ApiOkResponse({ type: InventoryResponseDto })
+  inventory(@CurrentUser() user: AuthUser): Promise<InventoryResponseDto> {
+    return this.marketService.inventory(user.userId);
   }
 
   @Post('Purchase')
