@@ -8,6 +8,9 @@ export class ZoneDetailsDto {
   @ApiProperty({ format: 'uuid' })
   ownerUserId: string;
 
+  @ApiProperty({ nullable: true, example: 772189, description: 'Owner ZONIC-ID — use to friend-request from the map' })
+  ownerZonicId: number | null;
+
   @ApiProperty({ nullable: true })
   ownerUsername: string | null;
 
