@@ -62,6 +62,12 @@ export class ActivityItemDto {
   @ApiProperty({ example: 'km', description: "'km' | 'km²' | 'steps'" })
   unit: string;
 
+  @ApiProperty({
+    example: 1.2,
+    description: 'Distance in km: running = run distance, territory = distance RAN to capture (not area), steps = step distance',
+  })
+  distanceKm: number;
+
   @ApiProperty({ example: 10.9, description: 'Average speed km/h (running & territory; 0 for steps)' })
   avgSpeed: number;
 
