@@ -14,6 +14,9 @@ export class ZoneDetailsDto {
   @ApiProperty({ nullable: true })
   ownerUsername: string | null;
 
+  @ApiProperty({ nullable: true, description: 'Avatar file id (GUID) — GET /UserProfile/DownloadAvatar?fileId=…' })
+  ownerAvatarFileId: string | null;
+
   @ApiProperty({ nullable: true, description: 'Relative URL to DownloadAvatar, or null' })
   ownerAvatarUrl: string | null;
 

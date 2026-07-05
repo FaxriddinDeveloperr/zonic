@@ -11,6 +11,9 @@ export class LeaderboardItemDto {
   @ApiProperty({ nullable: true, example: 772189, description: 'ZONIC-ID — use to send a friend request' })
   zonicId: number | null;
 
+  @ApiProperty({ nullable: true, description: 'Avatar file id — GET /UserProfile/DownloadAvatar?fileId=…' })
+  avatarFileId: string | null;
+
   @ApiProperty()
   username: string;
 

@@ -152,6 +152,7 @@ export class ZonesService {
       ownerUserId: r.owneruserid,
       ownerZonicId: r.zonic_id,
       ownerUsername: r.username,
+      ownerAvatarFileId: r.avatar_file_id,
       ownerAvatarUrl: r.avatar_file_id
         ? `/UserProfile/DownloadAvatar?fileId=${r.avatar_file_id}`
         : null,
