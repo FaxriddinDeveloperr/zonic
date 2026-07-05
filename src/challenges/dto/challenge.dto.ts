@@ -20,11 +20,6 @@ export class CreateChallengeDto {
   @ApiProperty({ example: '2026-07-01T09:00:00.000Z', description: 'ISO or dd.MM.yyyy HH:mm:ss' })
   @IsString()
   startAt: string;
-
-  @ApiProperty({ example: 500, description: 'Tanga staked' })
-  @IsInt()
-  @Min(0)
-  bet: number;
 }
 
 export class RespondChallengeDto {

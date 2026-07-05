@@ -49,52 +49,50 @@ export class WalletService {
     return { tanga: Number(row.tanga), xp, xpExpiresAt: xp > 0 ? expiresAt : null };
   }
 
-  /** Convert activity since the last claim into Tanga (added) and XP (set/added for today). */
-  async claimDailyReward(userId: string): Promise<DailyRewardDto> {
-    const row = await this.loadOrCreate(userId);
-
-    // Window: from the last claim (or the last 24h on first ever claim) up to now.
-    const now = new Date();
-    const windowStart = row.last_reward_at
-      ? new Date(row.last_reward_at)
-      : new Date(now.getTime() - 24 * 3600 * 1000);
-
-    const [act] = await this.dataSource.query(
-      `SELECT
-         COALESCE((SELECT SUM(distance_km) FROM game_free_run
-                    WHERE user_id = $1 AND started_at > $2 AND started_at <= $3), 0) AS km,
-         COALESCE((SELECT SUM(steps) FROM game_step_activity
-                    WHERE user_id = $1 AND started_at > $2 AND started_at <= $3), 0) AS steps,
-         COALESCE((SELECT COUNT(*) FROM game_territory
-                    WHERE owner_user_id = $1 AND captured_at > $2 AND captured_at <= $3), 0) AS hexagons`,
-      [userId, windowStart, now],
-    );
-    const km = Number(act.km);
-    const steps = Number(act.steps);
-    const hexagons = Number(act.hexagons);
-
+  /**
+   * Credit Tanga + XP for an activity, immediately (automatic earning). Rates from config:
+   * 1 km run / 1000 steps / 1 territory capture each ≈ tangaPerKm etc. Called on save/capture.
+   */
+  async creditForActivity(
+    userId: string,
+    a: { km?: number; steps?: number; hexagons?: number },
+  ): Promise<{ tangaEarned: number; xpEarned: number }> {
     const e = this.econ;
+    const km = a.km ?? 0;
+    const steps = a.steps ?? 0;
+    const hex = a.hexagons ?? 0;
     const tangaEarned = Math.round(
-      km * e.tangaPerKm + (steps / 1000) * e.tangaPer1000Steps + hexagons * e.tangaPerHexagon,
+      km * e.tangaPerKm + (steps / 1000) * e.tangaPer1000Steps + hex * e.tangaPerHexagon,
     );
     const xpEarned = Math.round(
-      km * e.xpPerKm + (steps / 1000) * e.xpPer1000Steps + hexagons * e.xpPerHexagon,
+      km * e.xpPerKm + (steps / 1000) * e.xpPer1000Steps + hex * e.xpPerHexagon,
     );
+    await this.credit(userId, tangaEarned, xpEarned);
+    return { tangaEarned, xpEarned };
+  }
 
-    // XP accumulates within the same UTC day; a new day replaces the (now-expired) balance.
-    const today = WalletService.utcDateStr(now);
+  /** Add Tanga (persistent) + XP (today, expiry-aware) to the wallet. */
+  async credit(userId: string, tanga: number, xp: number): Promise<void> {
+    if (tanga <= 0 && xp <= 0) return;
+    const row = await this.loadOrCreate(userId);
+    const today = WalletService.utcDateStr(new Date());
     const { xp: currentXp } = this.applyXpExpiry(row, await this.retentionHours(userId));
-    const newXp = row.xp_date === today ? currentXp + xpEarned : xpEarned;
-    const newTanga = Number(row.tanga) + tangaEarned;
-
+    const newXp = (row.xp_date === today ? currentXp : 0) + Math.max(0, Math.round(xp));
+    const newTanga = Number(row.tanga) + Math.max(0, Math.round(tanga));
     await this.dataSource.query(
-      `UPDATE game_user_wallet
-          SET tanga = $2, xp = $3, xp_date = $4, last_reward_at = $5, updated_at = now()
+      `UPDATE game_user_wallet SET tanga = $2, xp = $3, xp_date = $4, updated_at = now()
         WHERE user_id = $1`,
-      [userId, newTanga, newXp, today, now],
+      [userId, newTanga, newXp, today],
     );
+  }
 
-    return { km: Math.round(km * 100) / 100, steps, hexagons, tangaEarned, xpEarned, tanga: newTanga, xp: newXp };
+  /**
+   * DEPRECATED — earning is now automatic (credited on each activity save/capture). Kept for
+   * backward compatibility: returns the current balance with 0 newly earned.
+   */
+  async claimDailyReward(userId: string): Promise<DailyRewardDto> {
+    const wallet = await this.getWallet(userId);
+    return { km: 0, steps: 0, hexagons: 0, tangaEarned: 0, xpEarned: 0, tanga: wallet.tanga, xp: wallet.xp };
   }
 
   private async loadOrCreate(userId: string): Promise<WalletRow> {

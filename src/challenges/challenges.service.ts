@@ -38,12 +38,14 @@ export class ChallengesService {
     private readonly friends: FriendsService,
   ) {}
 
+  /** Fixed challenge cost — every challenge costs 100 coins (each side stakes 100; winner takes 200). */
+  static readonly CHALLENGE_COST = 100;
+
   async create(
     userId: string,
     opponentZonicId: number,
     goalType: ChallengeGoal,
     startAt: string,
-    bet: number,
   ): Promise<ChallengeDto> {
     const opponent = await this.friends.search(opponentZonicId); // 404 if missing
     if (opponent.userId === userId) throw badRequest(['You cannot challenge yourself.']);
@@ -56,7 +58,7 @@ export class ChallengesService {
     const [ins]: Array<{ id: string }> = await this.dataSource.query(
       `INSERT INTO game_challenge (challenger_id, opponent_id, goal_type, start_at, bet, status)
        VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING id::text`,
-      [userId, opponent.userId, goalType, start, bet],
+      [userId, opponent.userId, goalType, start, ChallengesService.CHALLENGE_COST],
     );
     // (Push notification to the opponent would fire here.)
     return this.getOne(ins.id, userId);

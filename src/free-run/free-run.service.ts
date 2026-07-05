@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { FreeRun, RoutePoint } from '../entities/free-run.entity';
 import { User } from '../entities/user.entity';
 import { GameConfig } from '../config/configuration';
+import { WalletService } from '../wallet/wallet.service';
 import { haversineDistance } from '../common/helpers/geohash';
 import { formatIso, parseFlexibleDateTime } from '../common/helpers/datetime';
 import { badRequest } from '../common/validation-problem';
@@ -27,6 +28,7 @@ export class FreeRunService {
 
   constructor(
     @InjectRepository(FreeRun) private readonly freeRuns: Repository<FreeRun>,
+    private readonly wallet: WalletService,
     config: ConfigService,
   ) {
     this.minDistanceM = config.get<GameConfig>('game')!.minFreeRunDistanceM;
@@ -67,6 +69,9 @@ export class FreeRunService {
         routePoints,
       }),
     );
+
+    // Automatic coin/XP earning: credit for the distance run.
+    await this.wallet.creditForActivity(userId, { km: distanceKm });
 
     return { id: saved.id };
   }

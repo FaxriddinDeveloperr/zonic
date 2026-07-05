@@ -6,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StepActivity } from '../entities/step-activity.entity';
 import { User } from '../entities/user.entity';
+import { WalletService } from '../wallet/wallet.service';
 import { formatIso, parseFlexibleDateTime } from '../common/helpers/datetime';
 import { caloriePerKm } from '../common/helpers/health';
 import { badRequest } from '../common/validation-problem';
@@ -24,6 +25,7 @@ export class StepsService {
   constructor(
     @InjectRepository(StepActivity) private readonly steps: Repository<StepActivity>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly wallet: WalletService,
   ) {}
 
   /** Session-style save — still upserts the day's total (day = startTime's UTC date). */
@@ -93,6 +95,13 @@ export class StepsService {
     distanceKm: number,
     times: { startedAt: Date; endedAt: Date; durationSeconds: number },
   ): Promise<{ id: string }> {
+    // Award coins only for NEW steps beyond what was already recorded for this day (no double-count).
+    const [prev] = await this.steps.manager.query(
+      `SELECT steps FROM game_step_activity WHERE user_id = $1 AND day = $2`,
+      [userId, day],
+    );
+    const deltaSteps = Math.max(0, steps - Number(prev?.steps ?? 0));
+
     const [row]: Array<{ id: string }> = await this.steps.manager.query(
       `INSERT INTO game_step_activity (user_id, day, started_at, ended_at, duration_seconds, steps, distance_km)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -103,6 +112,7 @@ export class StepsService {
        RETURNING id::text`,
       [userId, day, times.startedAt, times.endedAt, times.durationSeconds, steps, distanceKm],
     );
+    if (deltaSteps > 0) await this.wallet.creditForActivity(userId, { steps: deltaSteps });
     return { id: row.id };
   }
 

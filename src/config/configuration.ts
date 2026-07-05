@@ -106,8 +106,9 @@ export default (): AppConfiguration => ({
     captureDistanceRatio: num(process.env.GAME_CAPTURE_DISTANCE_RATIO, 1.33),
   },
   economy: {
-    tangaPerKm: num(process.env.ECON_TANGA_PER_KM, 100),
-    tangaPer1000Steps: num(process.env.ECON_TANGA_PER_1000_STEPS, 50),
+    // 200 coin per unit (1 km run / 1000 steps / 1 territory capture) — credited automatically.
+    tangaPerKm: num(process.env.ECON_TANGA_PER_KM, 200),
+    tangaPer1000Steps: num(process.env.ECON_TANGA_PER_1000_STEPS, 200),
     tangaPerHexagon: num(process.env.ECON_TANGA_PER_HEXAGON, 200),
     xpPerKm: num(process.env.ECON_XP_PER_KM, 1000),
     xpPer1000Steps: num(process.env.ECON_XP_PER_1000_STEPS, 500),

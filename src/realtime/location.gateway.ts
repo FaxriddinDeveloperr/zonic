@@ -23,6 +23,7 @@ import { parseExactDateTime } from '../common/helpers/datetime';
 import { ZONE_CAPTURE } from '../common/constants';
 import { RunSessionService } from '../run-sessions/run-session.service';
 import { ZonesService } from '../zones/zones.service';
+import { WalletService } from '../wallet/wallet.service';
 import { LocationChannel } from './location.channel';
 import { LocationBackgroundService } from './location-background.service';
 
@@ -43,6 +44,7 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly background: LocationBackgroundService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly wallet: WalletService,
   ) {}
 
   handleConnection(client: Socket): void {
@@ -176,7 +178,14 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
       // Success → end the run and report it.
       await this.runSessionService.finalizeRun(session);
       client.emit('RunStopped');
-      client.emit('ZoneCaptured', { zoneId: result.zoneId, areaKm2: result.areaKm2 });
+      // Automatic coin/XP earning for the capture.
+      const reward = await this.wallet.creditForActivity(userId, { hexagons: 1 });
+      client.emit('ZoneCaptured', {
+        zoneId: result.zoneId,
+        areaKm2: result.areaKm2,
+        tangaEarned: reward.tangaEarned,
+        xpEarned: reward.xpEarned,
+      });
 
       // Broadcast the new polygon to the geo group around its centroid.
       const groupPrecision = (this.config.get('game') as { groupPrecision: number }).groupPrecision;
