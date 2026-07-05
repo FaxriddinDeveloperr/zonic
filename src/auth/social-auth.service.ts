@@ -12,6 +12,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 import { createRandomSalt, hashPassword } from '../common/helpers/password';
+import { assignZonicId } from '../common/helpers/zonic-id';
 import { STATE_ACTIVE } from '../common/constants';
 import { badRequest } from '../common/validation-problem';
 import { AuthService } from './auth.service';
@@ -141,7 +142,10 @@ export class SocialAuthService {
       appleUserId: provider === 'apple' ? profile.providerId : null,
     });
 
-    return this.users.save(user);
+    const saved = await this.users.save(user);
+    // Give every new social user a ZONIC-ID immediately (friend-requestable everywhere).
+    await assignZonicId(this.users.manager, saved.id);
+    return saved;
   }
 
   /** Sanitise a base into a unique username (<=100 chars), appending a counter on collision. */

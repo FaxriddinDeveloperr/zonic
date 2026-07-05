@@ -72,7 +72,8 @@ export class ZonesService {
         WHERE t.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)`,
       [request.minLng, request.minLat, request.maxLng, request.maxLat],
     );
-    return rows.map((r) => ZonesService.toZoneItem(r));
+    // Never emit a zone without a real polygon ring (< 4 pts) — the map would draw a fake circle.
+    return rows.map((r) => ZonesService.toZoneItem(r)).filter((z) => z.pathPolygon.length >= 4);
   }
 
   async getUserZones(userId: string): Promise<ZoneItemDto[]> {
@@ -94,7 +95,8 @@ export class ZonesService {
         WHERE t.owner_user_id = $1`,
       [userId],
     );
-    return rows.map((r) => ZonesService.toZoneItem(r));
+    // Never emit a zone without a real polygon ring (< 4 pts) — the map would draw a fake circle.
+    return rows.map((r) => ZonesService.toZoneItem(r)).filter((z) => z.pathPolygon.length >= 4);
   }
 
   /** A single zone's polygon parts (used to broadcast ZoneUpdated after capture). */
@@ -117,7 +119,8 @@ export class ZonesService {
         WHERE t.id = $1`,
       [zoneId],
     );
-    return rows.map((r) => ZonesService.toZoneItem(r));
+    // Never emit a zone without a real polygon ring (< 4 pts) — the map would draw a fake circle.
+    return rows.map((r) => ZonesService.toZoneItem(r)).filter((z) => z.pathPolygon.length >= 4);
   }
 
   async getDetails(id: string): Promise<ZoneDetailsDto> {

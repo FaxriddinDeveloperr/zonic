@@ -10,6 +10,7 @@ import { ZonesService } from '../zones/zones.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { RegisterResponseDto } from './dto/register-response.dto';
+import { assignZonicId } from '../common/helpers/zonic-id';
 
 @Injectable()
 export class UsersService {
@@ -44,6 +45,8 @@ export class UsersService {
     });
 
     const saved = await this.users.save(entity);
+    // Give every new user a ZONIC-ID immediately so they're friend-requestable everywhere.
+    await assignZonicId(this.users.manager, saved.id);
     return { id: saved.id };
   }
 
