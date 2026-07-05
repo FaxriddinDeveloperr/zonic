@@ -68,9 +68,10 @@ export class ActivityService {
       started_at: Date;
       duration_seconds: number;
       distance_km: number;
+      average_speed_kmh: number;
       route_points: Array<{ lat: number; lng: number }> | null;
     }> = await this.dataSource.query(
-      `SELECT id::text, started_at, duration_seconds, distance_km, route_points
+      `SELECT id::text, started_at, duration_seconds, distance_km, average_speed_kmh, route_points
          FROM game_free_run WHERE user_id = $1`,
       [userId],
     );
@@ -92,6 +93,7 @@ export class ActivityService {
         durationSeconds: Number(r.duration_seconds),
         value: round(Number(r.distance_km), 2),
         unit: 'km',
+        avgSpeed: round(Number(r.average_speed_kmh), 2),
         polyline,
         polygons: null,
       };
@@ -103,9 +105,11 @@ export class ActivityService {
       id: string;
       captured_at: Date;
       area_m2: number;
+      duration_seconds: number;
+      avg_speed_kmh: number;
       geo: string;
     }> = await this.dataSource.query(
-      `SELECT id::text, captured_at, area_m2, ST_AsGeoJSON(geom) AS geo
+      `SELECT id::text, captured_at, area_m2, duration_seconds, avg_speed_kmh, ST_AsGeoJSON(geom) AS geo
          FROM game_territory WHERE owner_user_id = $1`,
       [userId],
     );
@@ -117,9 +121,10 @@ export class ActivityService {
         id: r.id,
         date: formatDate(d),
         time: formatHourMinute(d),
-        durationSeconds: 0,
+        durationSeconds: Number(r.duration_seconds),
         value: round(Number(r.area_m2) / 1_000_000, 4),
         unit: 'km²',
+        avgSpeed: round(Number(r.avg_speed_kmh), 2),
         polyline: null,
         polygons: ActivityService.multiPolygonRings(r.geo),
       };
@@ -148,6 +153,7 @@ export class ActivityService {
         durationSeconds: Number(r.duration_seconds),
         value: Number(r.steps),
         unit: 'steps',
+        avgSpeed: 0,
         polyline: null,
         polygons: null,
       };

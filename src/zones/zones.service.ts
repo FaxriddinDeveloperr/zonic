@@ -282,16 +282,24 @@ export class ZonesService {
         await manager.query(`DELETE FROM game_territory WHERE id = ANY($1::uuid[])`, [ids]);
       }
 
-      // G) Insert the final zone.
+      // G) Insert the final zone. Store this run's duration + avg speed (km/h) so the Activity
+      //    History can show avgSpeed for territory items.
+      const durationSeconds = Math.max(
+        0,
+        Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 1000),
+      );
+      const avgSpeedKmh =
+        durationSeconds > 0 ? (runDistanceM / 1000) / (durationSeconds / 3600) : 0;
       const inserted: Array<{ id: string; area_m2: number; lat: number; lng: number }> =
         await manager.query(
-          `INSERT INTO game_territory (owner_user_id, color, geom, centroid, area_m2, run_distance_m)
+          `INSERT INTO game_territory
+             (owner_user_id, color, geom, centroid, area_m2, run_distance_m, duration_seconds, avg_speed_kmh)
            SELECT $2, COALESCE(u.color, $4), g.geom, ST_Centroid(g.geom),
-                  ST_Area(g.geom::geography), $3
+                  ST_Area(g.geom::geography), $3, $5, $6
              FROM (SELECT ${NORM('ST_GeomFromEWKT($1)')} AS geom) g CROSS JOIN sys_user u
             WHERE u.id = $2 AND NOT ST_IsEmpty(g.geom)
            RETURNING id::text AS id, area_m2, ST_Y(centroid) AS lat, ST_X(centroid) AS lng`,
-          [finalEwkt, userId, runDist, DEFAULT_COLOR],
+          [finalEwkt, userId, runDist, DEFAULT_COLOR, durationSeconds, Math.round(avgSpeedKmh * 100) / 100],
         );
 
       const row = inserted[0];
