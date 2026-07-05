@@ -73,10 +73,23 @@ export class StatsService {
 
     let res: StatsResponseDto;
     if (dimension === StatsDimension.Running) {
+      // "Running" = Free Runs AND zone-capture runs (game_territory stores the run's distance,
+      // duration, avg speed). A zone capture is also a run, so it counts here too.
       const rows: RunRow[] = await this.dataSource.query(
-        `SELECT started_at, distance_km, average_speed_kmh, pace_min_per_km, duration_seconds
-           FROM game_free_run
-          WHERE user_id = $1 AND started_at >= $2`,
+        `SELECT started_at, distance_km, average_speed_kmh, pace_min_per_km, duration_seconds FROM (
+           SELECT started_at, distance_km, average_speed_kmh, pace_min_per_km, duration_seconds
+             FROM game_free_run
+            WHERE user_id = $1 AND started_at >= $2
+           UNION ALL
+           SELECT captured_at::timestamp AS started_at,
+                  run_distance_m / 1000.0 AS distance_km,
+                  avg_speed_kmh AS average_speed_kmh,
+                  CASE WHEN run_distance_m > 0
+                       THEN (duration_seconds / 60.0) / (run_distance_m / 1000.0) ELSE 0 END AS pace_min_per_km,
+                  duration_seconds
+             FROM game_territory
+            WHERE owner_user_id = $1 AND captured_at >= $2 AND run_distance_m > 0
+         ) q`,
         [userId, since],
       );
       res = this.runningStats(rows, period, buckets);
