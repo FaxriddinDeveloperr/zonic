@@ -192,18 +192,26 @@ export class StatsService {
 
   // ─── B. Personal Bests ────────────────────────────────────────────────────
   async getPersonalBests(userId: string): Promise<PersonalBestsResponseDto> {
+    // Fastest & longest consider BOTH free runs and zone-capture runs (game_territory stores the
+    // run's avg_speed_kmh + run_distance_m), so a user who only captures territory still gets bests.
     const [fastest] = await this.dataSource.query(
-      `SELECT average_speed_kmh AS v, started_at AS d
-         FROM game_free_run
-        WHERE user_id = $1 AND average_speed_kmh > 0
-        ORDER BY average_speed_kmh DESC LIMIT 1`,
+      `SELECT v, d FROM (
+         SELECT average_speed_kmh AS v, started_at AS d FROM game_free_run
+          WHERE user_id = $1 AND average_speed_kmh > 0
+         UNION ALL
+         SELECT avg_speed_kmh AS v, captured_at::timestamp AS d FROM game_territory
+          WHERE owner_user_id = $1 AND avg_speed_kmh > 0
+       ) q ORDER BY v DESC LIMIT 1`,
       [userId],
     );
     const [longest] = await this.dataSource.query(
-      `SELECT distance_km AS v, started_at AS d
-         FROM game_free_run
-        WHERE user_id = $1 AND distance_km > 0
-        ORDER BY distance_km DESC LIMIT 1`,
+      `SELECT v, d FROM (
+         SELECT distance_km AS v, started_at AS d FROM game_free_run
+          WHERE user_id = $1 AND distance_km > 0
+         UNION ALL
+         SELECT run_distance_m / 1000.0 AS v, captured_at::timestamp AS d FROM game_territory
+          WHERE owner_user_id = $1 AND run_distance_m > 0
+       ) q ORDER BY v DESC LIMIT 1`,
       [userId],
     );
     const [largest] = await this.dataSource.query(
