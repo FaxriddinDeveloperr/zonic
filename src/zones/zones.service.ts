@@ -10,6 +10,7 @@ import { formatDate, formatDateTime } from '../common/helpers/datetime';
 import { ZoneAreaRequestDto } from './dto/zone-area-request.dto';
 import { LatLngDto, ZoneItemDto } from './dto/zone-item.dto';
 import { ZoneDetailsDto } from './dto/zone-details.dto';
+import { ZoneCenterDto } from './dto/zone-center.dto';
 
 const DEFAULT_COLOR = '#3B82F6';
 
@@ -121,6 +122,23 @@ export class ZonesService {
     );
     // Never emit a zone without a real polygon ring (< 4 pts) — the map would draw a fake circle.
     return rows.map((r) => ZonesService.toZoneItem(r)).filter((z) => z.pathPolygon.length >= 4);
+  }
+
+  /** Centre {lat,lng} of a user's territories (by ZONIC-ID) so the camera can fly to their zone. */
+  async getCenterFor(zonicId: number): Promise<ZoneCenterDto> {
+    const [u] = await this.dataSource.query(
+      `SELECT id::text FROM sys_user WHERE zonic_id = $1`,
+      [zonicId],
+    );
+    if (!u) throw new NotFoundException('User not found.');
+    const [c] = await this.dataSource.query(
+      `SELECT ST_Y(ST_Centroid(ST_Collect(geom))) AS lat,
+              ST_X(ST_Centroid(ST_Collect(geom))) AS lng
+         FROM game_territory WHERE owner_user_id = $1`,
+      [u.id],
+    );
+    if (!c || c.lat == null) throw new NotFoundException('This user has no territory yet.');
+    return { lat: Number(c.lat), lng: Number(c.lng) };
   }
 
   async getDetails(id: string): Promise<ZoneDetailsDto> {

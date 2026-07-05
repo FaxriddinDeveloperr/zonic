@@ -8,6 +8,7 @@ import { ZonesService } from './zones.service';
 import { ZoneAreaRequestDto } from './dto/zone-area-request.dto';
 import { ZoneItemDto } from './dto/zone-item.dto';
 import { ZoneDetailsDto } from './dto/zone-details.dto';
+import { ZoneCenterDto, ZoneCenterQueryDto } from './dto/zone-center.dto';
 
 @ApiTags('Zone')
 @ApiBearerAuth()
@@ -28,6 +29,13 @@ export class ZonesController {
   @ApiOkResponse({ type: ZoneItemDto, isArray: true })
   getMyZones(@CurrentUser() user: AuthUser): Promise<ZoneItemDto[]> {
     return this.zonesService.getUserZones(user.userId);
+  }
+
+  @Get('GetCenterFor')
+  @ApiOperation({ summary: "Centre {lat,lng} of a user's territories (fly the camera to a friend's zone)" })
+  @ApiOkResponse({ type: ZoneCenterDto })
+  getCenterFor(@Query() query: ZoneCenterQueryDto): Promise<ZoneCenterDto> {
+    return this.zonesService.getCenterFor(query.zonicId);
   }
 
   @Get('Details/:id')
