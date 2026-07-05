@@ -11,6 +11,7 @@ import { haversineDistance } from '../common/helpers/geohash';
 import { formatIso, parseFlexibleDateTime } from '../common/helpers/datetime';
 import { badRequest } from '../common/validation-problem';
 import { SaveFreeRunDto } from './dto/save-free-run.dto';
+import { LeaderboardScope } from '../run-sessions/dto/leaderboard-request.dto';
 import {
   FreeRunHistoryResponseDto,
   FreeRunItemDto,
@@ -94,8 +95,27 @@ export class FreeRunService {
   async getLeaderboard(
     page: number,
     pageSize: number,
+    scope: LeaderboardScope,
+    callerId: string,
   ): Promise<FreeRunLeaderboardResponseDto> {
-    const rows = await this.freeRuns
+    // Region scope: rank only users in the caller's country/region (GLOBAL/UZBEKISTAN/TASHKENT tabs).
+    let countryId: number | null = null;
+    let regionId: number | null = null;
+    if (scope !== LeaderboardScope.Global) {
+      const [me] = await this.freeRuns.manager.query(
+        `SELECT country_id, region_id FROM sys_user WHERE id = $1`,
+        [callerId],
+      );
+      if (scope === LeaderboardScope.Country) {
+        if (me?.country_id == null) return { items: [] };
+        countryId = Number(me.country_id);
+      } else {
+        if (me?.region_id == null) return { items: [] };
+        regionId = Number(me.region_id);
+      }
+    }
+
+    const qb = this.freeRuns
       .createQueryBuilder('r')
       .innerJoin(User, 'u', 'u.id = r.user_id')
       .select('u.id', 'userid')
@@ -112,7 +132,10 @@ export class FreeRunService {
       .addGroupBy('u.avatar_file_id')
       .orderBy('SUM(r.distance_km)', 'DESC')
       .offset((page - 1) * pageSize)
-      .limit(pageSize)
+      .limit(pageSize);
+    if (countryId != null) qb.andWhere('u.country_id = :cid', { cid: countryId });
+    if (regionId != null) qb.andWhere('u.region_id = :rid', { rid: regionId });
+    const rows = await qb
       .getRawMany<{
         userid: string;
         zonicid: number | null;

@@ -7,6 +7,7 @@ import { AuthUser } from '../auth/jwt.strategy';
 import { FreeRunService } from './free-run.service';
 import { SaveFreeRunDto } from './dto/save-free-run.dto';
 import { PageQueryDto } from './dto/page-query.dto';
+import { LeaderboardRequestDto } from '../run-sessions/dto/leaderboard-request.dto';
 import {
   FreeRunHistoryResponseDto,
   FreeRunLeaderboardResponseDto,
@@ -37,9 +38,14 @@ export class FreeRunController {
   }
 
   @Get('GetLeaderboard')
-  @ApiOperation({ summary: 'Leaderboard ranked by total free-run distance' })
+  @ApiOperation({
+    summary: 'Leaderboard by total free-run distance (scope: global / country / region)',
+  })
   @ApiOkResponse({ type: FreeRunLeaderboardResponseDto })
-  getLeaderboard(@Query() query: PageQueryDto): Promise<FreeRunLeaderboardResponseDto> {
-    return this.freeRunService.getLeaderboard(query.resolvedPage, query.resolvedPageSize);
+  getLeaderboard(
+    @CurrentUser() user: AuthUser,
+    @Query() query: LeaderboardRequestDto,
+  ): Promise<FreeRunLeaderboardResponseDto> {
+    return this.freeRunService.getLeaderboard(query.page, query.pageSize, query.scope, user.userId);
   }
 }
