@@ -161,13 +161,14 @@ export class RunSessionService {
     const totalCount = Number(countRows[0]?.cnt ?? 0);
 
     const offset = (page - 1) * pageSize;
-    const rows: Array<{ username: string; totaldistance: string }> =
+    const rows: Array<{ userid: string; zonic_id: number | null; username: string; totaldistance: string }> =
       await this.sessions.manager.query(
-        `SELECT u.username AS username, SUM(s.total_distance_meters) AS totaldistance
+        `SELECT u.id::text AS userid, u.zonic_id, u.username AS username,
+                SUM(s.total_distance_meters) AS totaldistance
            FROM game_run_session s
            JOIN sys_user u ON u.id = s.user_id
           WHERE s.ended_at IS NOT NULL ${filterSql}
-          GROUP BY u.id, u.username
+          GROUP BY u.id, u.zonic_id, u.username
           ORDER BY SUM(s.total_distance_meters) DESC
           LIMIT ${pageSize} OFFSET ${offset}`,
         filterParams,
@@ -176,6 +177,8 @@ export class RunSessionService {
     let rank = offset + 1;
     const items = rows.map((x) => ({
       rank: rank++,
+      userId: x.userid,
+      zonicId: x.zonic_id,
       username: x.username,
       totalDistance: round(Number(x.totaldistance) / 1000.0, 2),
     }));

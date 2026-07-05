@@ -51,6 +51,9 @@ export class FreeRunLeaderboardItemDto {
   @ApiProperty()
   userId: string;
 
+  @ApiProperty({ nullable: true, example: 772189, description: 'ZONIC-ID — use to send a friend request' })
+  zonicId: number | null;
+
   @ApiProperty()
   username: string;
 

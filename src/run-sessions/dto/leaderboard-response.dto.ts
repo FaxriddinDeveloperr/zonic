@@ -5,6 +5,12 @@ export class LeaderboardItemDto {
   @ApiProperty()
   rank: number;
 
+  @ApiProperty({ description: "Ranked user's id (uuid)" })
+  userId: string;
+
+  @ApiProperty({ nullable: true, example: 772189, description: 'ZONIC-ID — use to send a friend request' })
+  zonicId: number | null;
+
   @ApiProperty()
   username: string;
 
