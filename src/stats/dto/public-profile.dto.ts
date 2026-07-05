@@ -1,13 +1,26 @@
 // Public profile of another player (BACKEND_TODO §3).
-import { ApiProperty } from '@nestjs/swagger';
-import { IsInt } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsInt, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class PublicProfileQueryDto {
-  @ApiProperty({ example: 772189, description: "Target user's ZONIC-ID" })
+  // Accept either ?zonicId= (preferred, consistent with the other endpoints) or the legacy ?userId=.
+  @ApiPropertyOptional({ example: 772189, description: "Target user's ZONIC-ID (preferred param)" })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
-  userId: number;
+  zonicId?: number;
+
+  @ApiPropertyOptional({ example: 772189, description: 'Alias of zonicId (legacy)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  userId?: number;
+
+  /** The effective ZONIC-ID from either param. */
+  get targetZonicId(): number | undefined {
+    return this.zonicId ?? this.userId;
+  }
 }
 
 export class PublicStatsDto {

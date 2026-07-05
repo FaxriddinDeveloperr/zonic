@@ -1,7 +1,7 @@
 // Profile Statistics, Personal Bests & Achievements — routes under /UserProfile (JWT required).
 // Distinct paths from the existing UserProfileController (GetRunHistory/GetLeaderboard), so the
 // two controllers coexist on the same prefix without collision.
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -59,6 +59,8 @@ export class StatsController {
   @ApiOperation({ summary: 'Another player’s public profile by ZONIC-ID (stats + achievements)' })
   @ApiOkResponse({ type: PublicProfileDto })
   getPublicProfile(@Query() q: PublicProfileQueryDto): Promise<PublicProfileDto> {
-    return this.statsService.getPublicProfile(q.userId);
+    const zonicId = q.targetZonicId;
+    if (zonicId == null) throw new BadRequestException('zonicId is required.');
+    return this.statsService.getPublicProfile(zonicId);
   }
 }
