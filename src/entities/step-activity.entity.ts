@@ -15,6 +15,10 @@ export class StepActivity {
   @Column({ name: 'ended_at', type: 'timestamp' })
   endedAt: Date;
 
+  // UTC day this row belongs to — one row per (user, day). Upserted so re-sends don't double-count.
+  @Column({ name: 'day', type: 'date', nullable: true })
+  day: string | null;
+
   @Column({ name: 'duration_seconds', type: 'int', default: 0 })
   durationSeconds: number;
 

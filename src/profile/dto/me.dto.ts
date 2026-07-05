@@ -28,6 +28,9 @@ export class MeDto {
   @ApiProperty({ example: 'dist_100', nullable: true, description: 'Chosen badge/title code' })
   selectedBadgeCode: string | null;
 
+  @ApiProperty({ example: 10000, description: 'Daily step goal' })
+  stepGoal: number;
+
   @ApiProperty({ example: '#FF0000', nullable: true, description: 'Personal/team zone color' })
   color: string | null;
 

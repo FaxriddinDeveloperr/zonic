@@ -62,6 +62,7 @@ export class ProfileService {
       instagramUsername: user.instagramUsername,
       stravaUrl: user.stravaUrl,
       selectedBadgeCode: user.selectedBadgeCode,
+      stepGoal: user.stepGoal,
       color: user.color,
       countryId: user.countryId,
       regionId: user.regionId,

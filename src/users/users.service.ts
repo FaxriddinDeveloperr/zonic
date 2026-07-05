@@ -121,6 +121,7 @@ export class UsersService {
     if (dto.instagramUsername !== undefined) user.instagramUsername = dto.instagramUsername || null;
     if (dto.stravaUrl !== undefined) user.stravaUrl = dto.stravaUrl || null;
     if (dto.selectedBadgeCode !== undefined) user.selectedBadgeCode = dto.selectedBadgeCode || null;
+    if (dto.stepGoal !== undefined) user.stepGoal = dto.stepGoal;
     if (dto.privacyLat !== undefined) user.privacyLat = dto.privacyLat;
     if (dto.privacyLng !== undefined) user.privacyLng = dto.privacyLng;
     if (dto.privacyRadiusM !== undefined) user.privacyRadiusM = dto.privacyRadiusM;

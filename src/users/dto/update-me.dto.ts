@@ -123,6 +123,14 @@ export class UpdateMeDto {
   @MaxLength(60)
   selectedBadgeCode?: string;
 
+  @ApiPropertyOptional({ example: 10000, description: 'Daily step goal' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(100)
+  @Max(100000)
+  stepGoal?: number;
+
   // ─── Privacy zone (Phase N). Send all three to set; send null to clear. ───
   @ApiPropertyOptional({ example: 41.31, description: 'Privacy-zone center latitude' })
   @IsOptional()

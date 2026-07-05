@@ -50,6 +50,10 @@ export class User {
   @Column({ name: 'selected_badge_code', type: 'varchar', nullable: true })
   selectedBadgeCode: string | null;
 
+  // Daily step goal (pedometer). Default 10000.
+  @Column({ name: 'step_goal', type: 'int', default: 10000 })
+  stepGoal: number;
+
   // Personal/team color (hex) applied to all of the user's territory zones; null → default.
   @Column({ name: 'color', type: 'varchar', nullable: true })
   color: string | null;
