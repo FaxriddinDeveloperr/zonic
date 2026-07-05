@@ -63,6 +63,17 @@ export class StatsService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   // ─── A. Statistics ────────────────────────────────────────────────────────
+  /** Resolve whose data to read: a target ZONIC-ID (another user) or the caller's own id. */
+  async resolveUserId(callerId: string, zonicId?: number): Promise<string> {
+    if (zonicId == null) return callerId;
+    const [u] = await this.dataSource.query(
+      `SELECT id::text FROM sys_user WHERE zonic_id = $1`,
+      [zonicId],
+    );
+    if (!u) throw new NotFoundException('User not found.');
+    return u.id;
+  }
+
   async getStats(
     userId: string,
     dimension: StatsDimension,

@@ -1,6 +1,19 @@
 // Response for GET /UserProfile/GetAchievements — badge progress grouped by family.
 // Each badge shows its unlock state plus a progress ratio/text so the UI can render "45/100".
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsInt, IsOptional } from 'class-validator';
+
+export class AchievementsQueryDto {
+  @ApiPropertyOptional({
+    example: 647307,
+    description: "Optional ZONIC-ID — view another user's achievements; omit for your own",
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  zonicId?: number;
+}
 
 export class AchievementDto {
   @ApiProperty({ example: 'dist_100', description: 'Stable badge code' })

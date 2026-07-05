@@ -10,7 +10,7 @@ import { StatsService } from './stats.service';
 import { StatsQueryDto } from './dto/stats-query.dto';
 import { StatsResponseDto } from './dto/stats-response.dto';
 import { PersonalBestsResponseDto } from './dto/personal-bests.dto';
-import { AchievementsResponseDto } from './dto/achievements.dto';
+import { AchievementsQueryDto, AchievementsResponseDto } from './dto/achievements.dto';
 import { PublicProfileDto, PublicProfileQueryDto } from './dto/public-profile.dto';
 
 @ApiTags('UserProfile')
@@ -22,28 +22,37 @@ export class StatsController {
 
   @Get('GetStats')
   @ApiOperation({
-    summary: 'Statistics cards + chart for a dimension (running/territory/steps) and period',
+    summary: 'Statistics cards + chart. Optional ?zonicId= views another user; omit for your own',
   })
   @ApiOkResponse({ type: StatsResponseDto })
-  getStats(
+  async getStats(
     @CurrentUser() user: AuthUser,
     @Query() query: StatsQueryDto,
   ): Promise<StatsResponseDto> {
-    return this.statsService.getStats(user.userId, query.dimension, query.period);
+    const targetId = await this.statsService.resolveUserId(user.userId, query.zonicId);
+    return this.statsService.getStats(targetId, query.dimension, query.period);
   }
 
   @Get('GetPersonalBests')
-  @ApiOperation({ summary: 'All-time personal records (fastest, longest, largest territory)' })
+  @ApiOperation({ summary: 'All-time personal records. Optional ?zonicId= views another user' })
   @ApiOkResponse({ type: PersonalBestsResponseDto })
-  getPersonalBests(@CurrentUser() user: AuthUser): Promise<PersonalBestsResponseDto> {
-    return this.statsService.getPersonalBests(user.userId);
+  async getPersonalBests(
+    @CurrentUser() user: AuthUser,
+    @Query() query: AchievementsQueryDto,
+  ): Promise<PersonalBestsResponseDto> {
+    const targetId = await this.statsService.resolveUserId(user.userId, query.zonicId);
+    return this.statsService.getPersonalBests(targetId);
   }
 
   @Get('GetAchievements')
-  @ApiOperation({ summary: 'Distance & territory badges with progress and unlock state' })
+  @ApiOperation({ summary: 'Badges with progress. Optional ?zonicId= views another user' })
   @ApiOkResponse({ type: AchievementsResponseDto })
-  getAchievements(@CurrentUser() user: AuthUser): Promise<AchievementsResponseDto> {
-    return this.statsService.getAchievements(user.userId);
+  async getAchievements(
+    @CurrentUser() user: AuthUser,
+    @Query() query: AchievementsQueryDto,
+  ): Promise<AchievementsResponseDto> {
+    const targetId = await this.statsService.resolveUserId(user.userId, query.zonicId);
+    return this.statsService.getAchievements(targetId);
   }
 
   @Get('GetPublicProfile')
