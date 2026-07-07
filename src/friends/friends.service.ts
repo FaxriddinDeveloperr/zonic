@@ -87,20 +87,43 @@ export class FriendsService {
 
   async respond(userId: string, requestId: string, accept: boolean): Promise<OkDto> {
     const [row] = await this.dataSource.query(
-      `SELECT id::text, addressee_id::text, status FROM game_friendship WHERE id = $1`,
+      `SELECT id::text, requester_id::text, addressee_id::text, status
+         FROM game_friendship WHERE id = $1`,
       [requestId],
     );
     if (!row || row.addressee_id !== userId || row.status !== 'pending') {
       throw badRequest(['No pending request to respond to.']);
     }
+    // Responder's identity — so the requester's notification says who accepted/declined.
+    const [me] = await this.dataSource.query(
+      `SELECT zonic_id, username FROM sys_user WHERE id = $1`,
+      [userId],
+    );
+    const who = me?.username ?? 'Foydalanuvchi';
+    const payload = { fromUserId: userId, fromZonicId: me?.zonic_id ?? null, fromUsername: me?.username ?? null };
+
     if (accept) {
       await this.dataSource.query(
         `UPDATE game_friendship SET status = 'accepted', responded_at = now() WHERE id = $1`,
         [requestId],
       );
+      await this.notifications.create(
+        row.requester_id,
+        'friend_accepted',
+        `${who} do'stlik so'rovingizni qabul qildi`,
+        null,
+        payload,
+      );
       return { ok: true, status: 'accepted' };
     }
     await this.dataSource.query(`DELETE FROM game_friendship WHERE id = $1`, [requestId]);
+    await this.notifications.create(
+      row.requester_id,
+      'friend_rejected',
+      `${who} do'stlik so'rovingizni rad etdi`,
+      null,
+      payload,
+    );
     return { ok: true, status: 'rejected' };
   }
 
