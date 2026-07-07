@@ -1,6 +1,6 @@
 // Challenge / Duel DTOs (Phase I).
-import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsInt, IsString, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export enum ChallengeGoal {
   Running = 'running',
@@ -20,6 +20,16 @@ export class CreateChallengeDto {
   @ApiProperty({ example: '2026-07-01T09:00:00.000Z', description: 'ISO or dd.MM.yyyy HH:mm:ss' })
   @IsString()
   startAt: string;
+
+  @ApiPropertyOptional({
+    example: 24,
+    description: 'Duration in hours (1–168). Winner is whoever does more between startAt and startAt+duration. Default 24.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(168)
+  durationHours?: number;
 }
 
 export class RespondChallengeDto {
@@ -65,7 +75,10 @@ export class ChallengeDto {
   @ApiProperty({ example: '2026-07-01T09:00:00.000Z' })
   startAt: string;
 
-  @ApiProperty({ example: 500 })
+  @ApiProperty({ example: '2026-07-02T09:00:00.000Z', description: 'Window end — winner measured up to here' })
+  endAt: string;
+
+  @ApiProperty({ example: 200, description: 'System prize paid to the winner' })
   bet: number;
 
   @ApiProperty({

@@ -26,7 +26,13 @@ export class ChallengesController {
   @ApiOperation({ summary: 'Challenge a friend (goal type, start time, Tanga bet)' })
   @ApiOkResponse({ type: ChallengeDto })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateChallengeDto): Promise<ChallengeDto> {
-    return this.challenges.create(user.userId, dto.opponentZonicId, dto.goalType, dto.startAt);
+    return this.challenges.create(
+      user.userId,
+      dto.opponentZonicId,
+      dto.goalType,
+      dto.startAt,
+      dto.durationHours,
+    );
   }
 
   @Post('Respond')

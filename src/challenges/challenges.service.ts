@@ -2,7 +2,8 @@
 // time and a Tanga bet. Lifecycle: pending → accepted/declined; an accepted challenge whose start
 // time has passed is reported as 'active' (live result tracking + bet settlement is a follow-up —
 // the TZ models the live duel on the client). No fund movement happens here yet.
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { formatIso, parseFlexibleDateTime } from '../common/helpers/datetime';
@@ -26,6 +27,7 @@ interface ChallengeRow {
   opponent_zid: number;
   goal_type: string;
   start_at: Date;
+  end_at: Date;
   bet: string;
   status: string;
   created_at: Date;
@@ -34,6 +36,8 @@ interface ChallengeRow {
 
 @Injectable()
 export class ChallengesService {
+  private readonly logger = new Logger(ChallengesService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly friends: FriendsService,
@@ -45,12 +49,14 @@ export class ChallengesService {
    * SYSTEM pays the winner this fixed prize; a tie pays nobody.
    */
   static readonly WINNER_PRIZE = 200;
+  static readonly DEFAULT_DURATION_HOURS = 24;
 
   async create(
     userId: string,
     opponentZonicId: number,
     goalType: ChallengeGoal,
     startAt: string,
+    durationHours?: number,
   ): Promise<ChallengeDto> {
     const opponent = await this.friends.search(opponentZonicId); // 404 if missing
     if (opponent.userId === userId) throw badRequest(['You cannot challenge yourself.']);
@@ -59,6 +65,8 @@ export class ChallengesService {
     }
     const start = parseFlexibleDateTime(startAt);
     if (!start) throw badRequest(['startAt is not a valid date.']);
+    const hours = durationHours ?? ChallengesService.DEFAULT_DURATION_HOURS;
+    const end = new Date(start.getTime() + hours * 3600 * 1000);
 
     // One active duel per pair: block a new invite while a pending/accepted challenge exists
     // between the two (either direction). Declined/finished ones don't block — re-invite is allowed.
@@ -76,9 +84,9 @@ export class ChallengesService {
 
     // bet column now records the system prize for display (nothing is taken from players).
     const [ins]: Array<{ id: string }> = await this.dataSource.query(
-      `INSERT INTO game_challenge (challenger_id, opponent_id, goal_type, start_at, bet, status)
-       VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING id::text`,
-      [userId, opponent.userId, goalType, start, ChallengesService.WINNER_PRIZE],
+      `INSERT INTO game_challenge (challenger_id, opponent_id, goal_type, start_at, end_at, bet, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING id::text`,
+      [userId, opponent.userId, goalType, start, end, ChallengesService.WINNER_PRIZE],
     );
     const dto = await this.getOne(ins.id, userId);
     // Notify (+push) the opponent that they've been challenged.
@@ -140,7 +148,7 @@ export class ChallengesService {
   async finish(userId: string, challengeId: string): Promise<ChallengeDto> {
     const settled = await this.dataSource.transaction(async (manager) => {
       const [c] = await manager.query(
-        `SELECT id::text, challenger_id::text, opponent_id::text, goal_type, start_at, bet, status
+        `SELECT id::text, challenger_id::text, opponent_id::text, goal_type, start_at, end_at, bet, status
            FROM game_challenge WHERE id = $1 FOR UPDATE`,
         [challengeId],
       );
@@ -150,46 +158,85 @@ export class ChallengesService {
       }
       if (c.status === 'finished') return null; // idempotent — already settled, don't re-notify
       if (c.status !== 'accepted') throw badRequest(['Challenge is not active.']);
-      if (new Date(c.start_at).getTime() > Date.now()) throw badRequest(['Challenge has not started.']);
-
-      const now = new Date();
-      const a = await ChallengesService.progress(manager, c.challenger_id, c.goal_type, c.start_at, now);
-      const b = await ChallengesService.progress(manager, c.opponent_id, c.goal_type, c.start_at, now);
-
-      let winner: string | null = null;
-      if (a > b) winner = c.challenger_id;
-      else if (b > a) winner = c.opponent_id;
-
-      // System pays the winner a fixed prize (nothing was staked); a tie pays nobody.
-      if (winner) {
-        await ChallengesService.creditTanga(manager, winner, ChallengesService.WINNER_PRIZE);
+      // Fair window: settle only AFTER the end time, measuring [start_at, end_at] — never "up to now".
+      if (new Date(c.end_at).getTime() > Date.now()) {
+        throw badRequest(['Bellashuv hali tugamadi — belgilangan vaqt o‘tishini kuting.']);
       }
-      await manager.query(
-        `UPDATE game_challenge SET status = 'finished', winner_user_id = $2, finished_at = now()
-          WHERE id = $1`,
-        [challengeId, winner],
-      );
-      return { challengerId: c.challenger_id as string, opponentId: c.opponent_id as string, winner };
+      return ChallengesService.settle(manager, c);
     });
+    if (settled) await this.notifyFinished(challengeId, settled);
+    return this.getOne(challengeId, userId);
+  }
 
-    const dto = await this.getOne(challengeId, userId);
-    if (settled) {
-      // Notify (+push) both players of the result (once, when it actually settles).
-      const winnerName = settled.winner
-        ? settled.winner === dto.challenger.userId
-          ? dto.challenger.username
-          : dto.opponent.username
-        : null;
-      const body = winnerName ? `G'olib: ${winnerName}` : 'Durang';
-      for (const uid of [settled.challengerId, settled.opponentId]) {
-        await this.notifications.create(uid, 'challenge_finished', 'Bellashuv yakunlandi', body, {
-          challengeId: dto.id,
-          winnerUserId: settled.winner,
-          prize: settled.winner ? ChallengesService.WINNER_PRIZE : 0,
+  /**
+   * Auto-settle every accepted challenge whose end time has passed — so a duel always resolves even
+   * if neither player calls Finish. Runs every minute.
+   */
+  @Cron('*/1 * * * *')
+  async settleDue(): Promise<void> {
+    const due: Array<{ id: string }> = await this.dataSource.query(
+      `SELECT id::text FROM game_challenge WHERE status = 'accepted' AND end_at <= now()`,
+    );
+    for (const { id } of due) {
+      try {
+        const settled = await this.dataSource.transaction(async (manager) => {
+          const [c] = await manager.query(
+            `SELECT id::text, challenger_id::text, opponent_id::text, goal_type, start_at, end_at, status
+               FROM game_challenge WHERE id = $1 FOR UPDATE`,
+            [id],
+          );
+          if (!c || c.status !== 'accepted' || new Date(c.end_at).getTime() > Date.now()) return null;
+          return ChallengesService.settle(manager, c);
         });
+        if (settled) await this.notifyFinished(id, settled);
+      } catch (e) {
+        this.logger.error(`Auto-settle failed for challenge ${id}: ${(e as Error).message}`);
       }
     }
-    return dto;
+  }
+
+  /** Measure both sides over [start_at, end_at], pay the winner, mark finished. */
+  private static async settle(
+    manager: { query: (sql: string, params?: unknown[]) => Promise<any> },
+    c: { id: string; challenger_id: string; opponent_id: string; goal_type: string; start_at: Date; end_at: Date },
+  ): Promise<{ challengerId: string; opponentId: string; winner: string | null }> {
+    const start = new Date(c.start_at);
+    const end = new Date(c.end_at);
+    const a = await ChallengesService.progress(manager, c.challenger_id, c.goal_type, start, end);
+    const b = await ChallengesService.progress(manager, c.opponent_id, c.goal_type, start, end);
+
+    let winner: string | null = null;
+    if (a > b) winner = c.challenger_id;
+    else if (b > a) winner = c.opponent_id;
+
+    if (winner) {
+      await ChallengesService.creditTanga(manager, winner, ChallengesService.WINNER_PRIZE);
+    }
+    await manager.query(
+      `UPDATE game_challenge SET status = 'finished', winner_user_id = $2, finished_at = now() WHERE id = $1`,
+      [c.id, winner],
+    );
+    return { challengerId: c.challenger_id, opponentId: c.opponent_id, winner };
+  }
+
+  private async notifyFinished(
+    challengeId: string,
+    settled: { challengerId: string; opponentId: string; winner: string | null },
+  ): Promise<void> {
+    const dto = await this.getOne(challengeId, settled.challengerId);
+    const winnerName = settled.winner
+      ? settled.winner === dto.challenger.userId
+        ? dto.challenger.username
+        : dto.opponent.username
+      : null;
+    const body = winnerName ? `G'olib: ${winnerName}` : 'Durang';
+    for (const uid of [settled.challengerId, settled.opponentId]) {
+      await this.notifications.create(uid, 'challenge_finished', 'Bellashuv yakunlandi', body, {
+        challengeId: dto.id,
+        winnerUserId: settled.winner,
+        prize: settled.winner ? ChallengesService.WINNER_PRIZE : 0,
+      });
+    }
   }
 
   private static async creditTanga(
@@ -253,7 +300,7 @@ export class ChallengesService {
   }
 
   private static readonly SELECT = `
-    SELECT c.id::text, c.goal_type, c.start_at, c.bet, c.status, c.created_at,
+    SELECT c.id::text, c.goal_type, c.start_at, c.end_at, c.bet, c.status, c.created_at,
            c.winner_user_id::text AS winner_user_id,
            ch.id::text AS challenger_id, ch.username AS challenger_name, ch.zonic_id AS challenger_zid,
            op.id::text AS opponent_id,   op.username AS opponent_name,   op.zonic_id AS opponent_zid
@@ -262,7 +309,8 @@ export class ChallengesService {
       JOIN sys_user op ON op.id = c.opponent_id`;
 
   private static toDto(r: ChallengeRow, userId: string): ChallengeDto {
-    // Accepted + start time passed → 'active' for the UI; everything else is the stored status.
+    // Accepted + start time passed → 'active' for the UI (until auto/manual settlement flips it to
+    // 'finished'); everything else is the stored status.
     let status = r.status;
     if (status === 'accepted' && new Date(r.start_at).getTime() <= Date.now()) status = 'active';
     return {
@@ -271,6 +319,7 @@ export class ChallengesService {
       opponent: { userId: r.opponent_id, username: r.opponent_name, zonicId: r.opponent_zid },
       goalType: r.goal_type,
       startAt: formatIso(new Date(r.start_at)),
+      endAt: formatIso(new Date(r.end_at)),
       bet: Number(r.bet),
       status,
       direction: r.challenger_id === userId ? 'outgoing' : 'incoming',
