@@ -8,6 +8,7 @@ import { DataSource } from 'typeorm';
 import { formatIso, parseFlexibleDateTime } from '../common/helpers/datetime';
 import { badRequest } from '../common/validation-problem';
 import { FriendsService } from '../friends/friends.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   ChallengeDto,
   ChallengeGoal,
@@ -36,6 +37,7 @@ export class ChallengesService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly friends: FriendsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -64,12 +66,25 @@ export class ChallengesService {
        VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING id::text`,
       [userId, opponent.userId, goalType, start, ChallengesService.WINNER_PRIZE],
     );
-    // (Push notification to the opponent would fire here.)
-    return this.getOne(ins.id, userId);
+    const dto = await this.getOne(ins.id, userId);
+    // Notify (+push) the opponent that they've been challenged.
+    await this.notifications.create(
+      dto.opponent.userId,
+      'challenge_invite',
+      `${dto.challenger.username} sizni bellashuvga chorladi`,
+      null,
+      {
+        challengeId: dto.id,
+        goalType: dto.goalType,
+        fromZonicId: dto.challenger.zonicId,
+        fromUsername: dto.challenger.username,
+      },
+    );
+    return dto;
   }
 
   async respond(userId: string, challengeId: string, accept: boolean): Promise<ChallengeOkDto> {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const [row] = await manager.query(
         `SELECT challenger_id::text, opponent_id::text, bet, status
            FROM game_challenge WHERE id = $1 FOR UPDATE`,
@@ -78,20 +93,29 @@ export class ChallengesService {
       if (!row || row.opponent_id !== userId || row.status !== 'pending') {
         throw badRequest(['No pending challenge to respond to.']);
       }
-      if (!accept) {
-        await manager.query(
-          `UPDATE game_challenge SET status = 'declined', responded_at = now() WHERE id = $1`,
-          [challengeId],
-        );
-        return { ok: true, status: 'declined' };
-      }
+      const status = accept ? 'accepted' : 'declined';
       // No escrow — challenges are free; the system pays the winner at finish.
       await manager.query(
-        `UPDATE game_challenge SET status = 'accepted', responded_at = now() WHERE id = $1`,
-        [challengeId],
+        `UPDATE game_challenge SET status = $2, responded_at = now() WHERE id = $1`,
+        [challengeId, status],
       );
-      return { ok: true, status: 'accepted' };
+      return { challengerId: row.challenger_id as string, status };
     });
+
+    // Notify (+push) the challenger that their invite was accepted/declined.
+    const [me] = await this.dataSource.query(
+      `SELECT username, zonic_id FROM sys_user WHERE id = $1`,
+      [userId],
+    );
+    const who = me?.username ?? 'Foydalanuvchi';
+    await this.notifications.create(
+      result.challengerId,
+      result.status === 'accepted' ? 'challenge_accepted' : 'challenge_declined',
+      `${who} bellashuvni ${result.status === 'accepted' ? 'qabul qildi' : 'rad etdi'}`,
+      null,
+      { challengeId, fromZonicId: me?.zonic_id ?? null, fromUsername: me?.username ?? null },
+    );
+    return { ok: true, status: result.status };
   }
 
   /**
@@ -100,7 +124,7 @@ export class ChallengesService {
    * either participant once the start time has passed. Idempotent (re-finishing returns the result).
    */
   async finish(userId: string, challengeId: string): Promise<ChallengeDto> {
-    await this.dataSource.transaction(async (manager) => {
+    const settled = await this.dataSource.transaction(async (manager) => {
       const [c] = await manager.query(
         `SELECT id::text, challenger_id::text, opponent_id::text, goal_type, start_at, bet, status
            FROM game_challenge WHERE id = $1 FOR UPDATE`,
@@ -110,7 +134,7 @@ export class ChallengesService {
       if (c.challenger_id !== userId && c.opponent_id !== userId) {
         throw badRequest(['You are not part of this challenge.']);
       }
-      if (c.status === 'finished') return; // idempotent
+      if (c.status === 'finished') return null; // idempotent — already settled, don't re-notify
       if (c.status !== 'accepted') throw badRequest(['Challenge is not active.']);
       if (new Date(c.start_at).getTime() > Date.now()) throw badRequest(['Challenge has not started.']);
 
@@ -131,8 +155,27 @@ export class ChallengesService {
           WHERE id = $1`,
         [challengeId, winner],
       );
+      return { challengerId: c.challenger_id as string, opponentId: c.opponent_id as string, winner };
     });
-    return this.getOne(challengeId, userId);
+
+    const dto = await this.getOne(challengeId, userId);
+    if (settled) {
+      // Notify (+push) both players of the result (once, when it actually settles).
+      const winnerName = settled.winner
+        ? settled.winner === dto.challenger.userId
+          ? dto.challenger.username
+          : dto.opponent.username
+        : null;
+      const body = winnerName ? `G'olib: ${winnerName}` : 'Durang';
+      for (const uid of [settled.challengerId, settled.opponentId]) {
+        await this.notifications.create(uid, 'challenge_finished', 'Bellashuv yakunlandi', body, {
+          challengeId: dto.id,
+          winnerUserId: settled.winner,
+          prize: settled.winner ? ChallengesService.WINNER_PRIZE : 0,
+        });
+      }
+    }
+    return dto;
   }
 
   private static async creditTanga(
