@@ -15,6 +15,7 @@ import {
   ChallengeGoal,
   ChallengeListDto,
   ChallengeOkDto,
+  ChallengeProgressDto,
 } from './dto/challenge.dto';
 
 interface ChallengeRow {
@@ -292,6 +293,62 @@ export class ChallengesService {
       [userId],
     );
     return { challenges: rows.map((r) => ChallengesService.toDto(r, userId)) };
+  }
+
+  /** Live scoreboard for a challenge: each side's progress so far + who's ahead + time remaining. */
+  async getProgress(userId: string, challengeId: string): Promise<ChallengeProgressDto> {
+    const [row] = await this.dataSource.query(
+      `${ChallengesService.SELECT} WHERE c.id = $1`,
+      [challengeId],
+    );
+    if (!row) throw badRequest(['Challenge not found.']);
+    if (row.challenger_id !== userId && row.opponent_id !== userId) {
+      throw badRequest(['You are not part of this challenge.']);
+    }
+    const dto = ChallengesService.toDto(row, userId);
+
+    // Measure live: from start up to now, but never past the window end.
+    const start = new Date(row.start_at);
+    const end = new Date(row.end_at);
+    const now = new Date();
+    const measureEnd = now < end ? now : end;
+    const startedYet = now >= start;
+
+    const rawA = startedYet
+      ? await ChallengesService.progress(this.dataSource, row.challenger_id, row.goal_type, start, measureEnd)
+      : 0;
+    const rawB = startedYet
+      ? await ChallengesService.progress(this.dataSource, row.opponent_id, row.goal_type, start, measureEnd)
+      : 0;
+
+    const unit = row.goal_type === 'territory' ? 'km²' : row.goal_type === 'running' ? 'km' : 'steps';
+    const toVal = (v: number): number =>
+      row.goal_type === 'territory'
+        ? Math.round((v / 1_000_000) * 10000) / 10000
+        : row.goal_type === 'running'
+          ? Math.round(v * 100) / 100
+          : Math.round(v);
+
+    let leaderUserId: string | null = null;
+    if (rawA > rawB) leaderUserId = row.challenger_id;
+    else if (rawB > rawA) leaderUserId = row.opponent_id;
+
+    const challengerSide = { ...dto.challenger, value: toVal(rawA) };
+    const opponentSide = { ...dto.opponent, value: toVal(rawB) };
+    const meIsChallenger = row.challenger_id === userId;
+
+    return {
+      challengeId,
+      goalType: row.goal_type,
+      unit,
+      status: dto.status,
+      startAt: dto.startAt,
+      endAt: dto.endAt,
+      secondsRemaining: Math.max(0, Math.floor((end.getTime() - now.getTime()) / 1000)),
+      me: meIsChallenger ? challengerSide : opponentSide,
+      opponent: meIsChallenger ? opponentSide : challengerSide,
+      leaderUserId,
+    };
   }
 
   private async getOne(id: string, userId: string): Promise<ChallengeDto> {

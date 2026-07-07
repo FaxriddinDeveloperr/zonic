@@ -100,6 +100,58 @@ export class ChallengeDto {
   createdAt: string;
 }
 
+export class ChallengeProgressQueryDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsString()
+  challengeId: string;
+}
+
+export class ChallengeProgressSideDto {
+  @ApiProperty()
+  userId: string;
+
+  @ApiProperty({ example: 772189 })
+  zonicId: number;
+
+  @ApiProperty()
+  username: string;
+
+  @ApiProperty({ example: 3.24, description: 'Live progress in the goal unit (km / km² / steps)' })
+  value: number;
+}
+
+export class ChallengeProgressDto {
+  @ApiProperty()
+  challengeId: string;
+
+  @ApiProperty({ example: 'running' })
+  goalType: string;
+
+  @ApiProperty({ example: 'km', description: "'km' | 'km²' | 'steps'" })
+  unit: string;
+
+  @ApiProperty({ example: 'active', description: 'pending | accepted | active | declined | finished' })
+  status: string;
+
+  @ApiProperty({ example: '2026-07-08T09:00:00.000Z' })
+  startAt: string;
+
+  @ApiProperty({ example: '2026-07-09T09:00:00.000Z' })
+  endAt: string;
+
+  @ApiProperty({ example: 83280, description: 'Seconds until endAt (0 if the window closed)' })
+  secondsRemaining: number;
+
+  @ApiProperty({ type: ChallengeProgressSideDto, description: 'The caller' })
+  me: ChallengeProgressSideDto;
+
+  @ApiProperty({ type: ChallengeProgressSideDto })
+  opponent: ChallengeProgressSideDto;
+
+  @ApiProperty({ nullable: true, description: 'Who is ahead right now (null on a tie)' })
+  leaderUserId: string | null;
+}
+
 export class ChallengeListDto {
   @ApiProperty({ type: [ChallengeDto] })
   challenges: ChallengeDto[];

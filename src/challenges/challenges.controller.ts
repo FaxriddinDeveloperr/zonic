@@ -1,5 +1,5 @@
 // Routes under /Challenge ([Authorize]).
-import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -9,6 +9,8 @@ import {
   ChallengeDto,
   ChallengeListDto,
   ChallengeOkDto,
+  ChallengeProgressDto,
+  ChallengeProgressQueryDto,
   CreateChallengeDto,
   FinishChallengeDto,
   RespondChallengeDto,
@@ -48,6 +50,16 @@ export class ChallengesController {
   @ApiOkResponse({ type: ChallengeListDto })
   list(@CurrentUser() user: AuthUser): Promise<ChallengeListDto> {
     return this.challenges.list(user.userId);
+  }
+
+  @Get('Progress')
+  @ApiOperation({ summary: "Live scoreboard: each side's progress so far, who's ahead, time left" })
+  @ApiOkResponse({ type: ChallengeProgressDto })
+  progress(
+    @CurrentUser() user: AuthUser,
+    @Query() q: ChallengeProgressQueryDto,
+  ): Promise<ChallengeProgressDto> {
+    return this.challenges.getProgress(user.userId, q.challengeId);
   }
 
   @Post('Finish')
