@@ -60,6 +60,20 @@ export class ChallengesService {
     const start = parseFlexibleDateTime(startAt);
     if (!start) throw badRequest(['startAt is not a valid date.']);
 
+    // One active duel per pair: block a new invite while a pending/accepted challenge exists
+    // between the two (either direction). Declined/finished ones don't block — re-invite is allowed.
+    const [active] = await this.dataSource.query(
+      `SELECT id FROM game_challenge
+        WHERE status IN ('pending', 'accepted')
+          AND ((challenger_id = $1 AND opponent_id = $2)
+            OR (challenger_id = $2 AND opponent_id = $1))
+        LIMIT 1`,
+      [userId, opponent.userId],
+    );
+    if (active) {
+      throw badRequest(['Bu foydalanuvchi bilan faol bellashuv allaqachon mavjud.']);
+    }
+
     // bet column now records the system prize for display (nothing is taken from players).
     const [ins]: Array<{ id: string }> = await this.dataSource.query(
       `INSERT INTO game_challenge (challenger_id, opponent_id, goal_type, start_at, bet, status)
