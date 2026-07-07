@@ -36,6 +36,7 @@ import { FeedModule } from './feed/feed.module';
 import { CoachModule } from './coach/coach.module';
 import { ClanModule } from './clan/clan.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ChatModule } from './chat/chat.module';
 
 const ENTITIES = [
   User,
@@ -100,6 +101,7 @@ const ENTITIES = [
     CoachModule,
     ClanModule,
     NotificationsModule,
+    ChatModule,
   ],
 })
 export class AppModule {}
