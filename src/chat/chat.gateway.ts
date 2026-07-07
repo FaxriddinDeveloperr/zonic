@@ -138,6 +138,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.emitRead(userId, p.peerId, messageIds);
   }
 
+  /** Tell both sides that a message was deleted (so their UIs remove it). */
+  emitMessageDeleted(conversationId: string, messageId: string, recipientId: string, senderId: string): void {
+    const payload = { conversationId, messageId };
+    if (this.isOnline(recipientId)) this.server.to(recipientId).emit('MessageDeleted', payload);
+    this.server.to(senderId).emit('MessageDeleted', payload);
+  }
+
   /** Tell the original sender (peer) that `readerId` has read the given messages. */
   emitRead(readerId: string, peerId: string, messageIds: string[]): void {
     if (messageIds.length && this.isOnline(peerId)) {

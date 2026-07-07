@@ -26,6 +26,8 @@ import {
   ChatOkDto,
   ChatPageQueryDto,
   ConversationsResponseDto,
+  DeleteConversationDto,
+  DeleteMessageDto,
   MarkChatReadDto,
   PresenceDto,
   PresenceQueryDto,
@@ -102,6 +104,31 @@ export class ChatController {
     const messageIds = await this.chat.markRead(user.userId, dto.peerId);
     this.gateway.emitRead(user.userId, dto.peerId, messageIds);
     return { ok: true, messageIds };
+  }
+
+  @Post('DeleteConversation')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Delete/clear a conversation for yourself (peer keeps their copy)' })
+  @ApiOkResponse({ type: ChatOkDto })
+  async deleteConversation(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: DeleteConversationDto,
+  ): Promise<ChatOkDto> {
+    await this.chat.deleteConversation(user.userId, dto.peerId);
+    return { ok: true };
+  }
+
+  @Post('DeleteMessage')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Delete your own message for both sides' })
+  @ApiOkResponse({ type: ChatOkDto })
+  async deleteMessage(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: DeleteMessageDto,
+  ): Promise<ChatOkDto> {
+    const { recipientId, conversationId } = await this.chat.deleteMessage(user.userId, dto.messageId);
+    this.gateway.emitMessageDeleted(conversationId, dto.messageId, recipientId, user.userId);
+    return { ok: true };
   }
 
   @Post('UploadAttachment')

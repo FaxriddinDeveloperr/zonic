@@ -119,13 +119,19 @@ export class ChatService {
       sent_at: Date;
       is_read: boolean;
     }> = await this.dataSource.query(
-      `SELECT m.id::text, m.conversation_id::text, m.sender_id::text,
+      `WITH conv AS (
+         SELECT CASE WHEN user_a = $1 THEN cleared_a_at ELSE cleared_b_at END AS my_cleared
+           FROM game_chat_conversation
+          WHERE (user_a = $1 AND user_b = $2) OR (user_a = $2 AND user_b = $1)
+       )
+       SELECT m.id::text, m.conversation_id::text, m.sender_id::text,
               u.zonic_id AS sender_zonic_id, m.text, m.attachment_file_id, m.attachment_type,
               m.sent_at, m.is_read
          FROM game_chat_message m
          JOIN sys_user u ON u.id = m.sender_id
-        WHERE (m.sender_id = $1 AND m.recipient_id = $2)
-           OR (m.sender_id = $2 AND m.recipient_id = $1)
+        WHERE ((m.sender_id = $1 AND m.recipient_id = $2)
+            OR (m.sender_id = $2 AND m.recipient_id = $1))
+          AND ((SELECT my_cleared FROM conv) IS NULL OR m.sent_at > (SELECT my_cleared FROM conv))
         ORDER BY m.sent_at DESC
         LIMIT $3 OFFSET $4`,
       [userId, peerId, pageSize, (page - 1) * pageSize],
@@ -197,15 +203,21 @@ export class ChatService {
               p.avatar_file_id AS peer_avatar_file_id, p.last_seen_at AS peer_last_seen,
               lm.text AS last_text, lm.attachment_type AS last_attachment_type, lm.sent_at AS last_at,
               (SELECT COUNT(*) FROM game_chat_message um
-                 WHERE um.conversation_id = c.id AND um.recipient_id = $1 AND um.is_read = false) AS unread
+                 WHERE um.conversation_id = c.id AND um.recipient_id = $1 AND um.is_read = false
+                   AND (mc.my_cleared IS NULL OR um.sent_at > mc.my_cleared)) AS unread
          FROM game_chat_conversation c
          JOIN sys_user p ON p.id = CASE WHEN c.user_a = $1 THEN c.user_b ELSE c.user_a END
+         CROSS JOIN LATERAL (
+           SELECT CASE WHEN c.user_a = $1 THEN c.cleared_a_at ELSE c.cleared_b_at END AS my_cleared
+         ) mc
          LEFT JOIN LATERAL (
            SELECT text, attachment_type, sent_at FROM game_chat_message m
-            WHERE m.conversation_id = c.id ORDER BY m.sent_at DESC LIMIT 1
+            WHERE m.conversation_id = c.id
+              AND (mc.my_cleared IS NULL OR m.sent_at > mc.my_cleared)
+            ORDER BY m.sent_at DESC LIMIT 1
          ) lm ON true
-        WHERE c.user_a = $1 OR c.user_b = $1
-        ORDER BY lm.sent_at DESC NULLS LAST
+        WHERE (c.user_a = $1 OR c.user_b = $1) AND lm.sent_at IS NOT NULL
+        ORDER BY lm.sent_at DESC
         LIMIT $2 OFFSET $3`,
       [userId, pageSize, (page - 1) * pageSize],
     );
@@ -223,6 +235,32 @@ export class ChatService {
       unreadCount: Number(r.unread),
     }));
     return { items, page, pageSize };
+  }
+
+  /** Delete a conversation for the caller only (peer keeps their copy) — sets their cleared_at. */
+  async deleteConversation(userId: string, peerId: string): Promise<void> {
+    const [ua, ub] = userId < peerId ? [userId, peerId] : [peerId, userId];
+    const col = userId === ua ? 'cleared_a_at' : 'cleared_b_at';
+    await this.dataSource.query(
+      `UPDATE game_chat_conversation SET ${col} = now() WHERE user_a = $1 AND user_b = $2`,
+      [ua, ub],
+    );
+  }
+
+  /** Delete a single message (own message only) for both sides. Returns delivery info for the event. */
+  async deleteMessage(
+    userId: string,
+    messageId: string,
+  ): Promise<{ recipientId: string; conversationId: string }> {
+    const [row] = await this.dataSource.query(
+      `SELECT sender_id::text, recipient_id::text, conversation_id::text
+         FROM game_chat_message WHERE id = $1`,
+      [messageId],
+    );
+    if (!row) throw new NotFoundException('Message not found.');
+    if (row.sender_id !== userId) throw badRequest(['You can only delete your own message.']);
+    await this.dataSource.query(`DELETE FROM game_chat_message WHERE id = $1`, [messageId]);
+    return { recipientId: row.recipient_id, conversationId: row.conversation_id };
   }
 
   /** Mark all messages from peer → user as read. Returns the affected message ids. */

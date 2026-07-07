@@ -134,6 +134,18 @@ export class ConversationsResponseDto {
   pageSize: number;
 }
 
+export class DeleteConversationDto {
+  @ApiProperty({ format: 'uuid', description: "Peer's userId — clears this chat for you" })
+  @IsString()
+  peerId: string;
+}
+
+export class DeleteMessageDto {
+  @ApiProperty({ format: 'uuid', description: 'Message id (your own message)' })
+  @IsString()
+  messageId: string;
+}
+
 export class PresenceQueryDto {
   @ApiProperty({ format: 'uuid', description: "Peer's userId (uuid)" })
   @IsString()
