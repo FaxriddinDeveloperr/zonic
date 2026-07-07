@@ -6,6 +6,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthUser } from '../auth/jwt.strategy';
 import { NotificationsService } from './notifications.service';
 import { MarkReadDto, NotificationsResponseDto, OkDto } from './dto/notifications.dto';
+import { RegisterDeviceDto } from './dto/register-device.dto';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -27,6 +28,27 @@ export class NotificationsController {
       Math.max(1, Number(page) || 1),
       Math.max(1, Number(pageSize) || 20),
     );
+  }
+
+  @Post('RegisterDevice')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Register an FCM device token for push notifications' })
+  @ApiOkResponse({ type: OkDto })
+  async registerDevice(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: RegisterDeviceDto,
+  ): Promise<OkDto> {
+    await this.notifications.registerDevice(user.userId, dto.token, dto.platform ?? null);
+    return { ok: true };
+  }
+
+  @Post('UnregisterDevice')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Remove an FCM device token (e.g. on logout)' })
+  @ApiOkResponse({ type: OkDto })
+  async unregisterDevice(@Body() dto: RegisterDeviceDto): Promise<OkDto> {
+    await this.notifications.unregisterDevice(dto.token);
+    return { ok: true };
   }
 
   @Post('MarkRead')

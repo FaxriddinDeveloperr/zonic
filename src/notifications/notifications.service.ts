@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { formatIso } from '../common/helpers/datetime';
+import { PushService } from './push.service';
 import {
   NotificationDto,
   NotificationsResponseDto,
@@ -12,9 +13,12 @@ import {
 
 @Injectable()
 export class NotificationsService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly push: PushService,
+  ) {}
 
-  /** Push a notification to a user (used by other modules). */
+  /** Store an in-app notification AND fire a real FCM push to the user's devices. */
   async create(
     userId: string,
     type: string,
@@ -27,6 +31,20 @@ export class NotificationsService {
        VALUES ($1, $2, $3, $4, $5::jsonb)`,
       [userId, type, title, body, JSON.stringify(payload)],
     );
+    // FCM data must be flat strings; carry the type + payload so the app can deep-link.
+    const data: Record<string, string> = { type };
+    for (const [k, v] of Object.entries(payload)) data[k] = String(v);
+    await this.push.sendToUser(userId, title, body, data);
+  }
+
+  /** Register (or reassign) an FCM device token for a user. */
+  registerDevice(userId: string, token: string, platform: string | null): Promise<void> {
+    return this.push.registerDevice(userId, token, platform);
+  }
+
+  /** Remove a device token (e.g. on logout). */
+  unregisterDevice(token: string): Promise<void> {
+    return this.push.removeDevice(token);
   }
 
   async list(userId: string, page: number, pageSize: number): Promise<NotificationsResponseDto> {

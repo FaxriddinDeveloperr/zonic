@@ -4,3 +4,8 @@ uploads/
 .env
 *.tsbuildinfo
 npm-debug.log*
+
+# Firebase service account credentials — SECRET, never commit
+*firebase-adminsdk*.json
+firebase-service-account.json
+secrets/
