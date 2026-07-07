@@ -18,6 +18,13 @@ export class SendMessageDto {
   @IsString()
   @MaxLength(200)
   attachmentFileId?: string;
+
+  @ApiPropertyOptional({ example: 15, description: 'Voice message length in seconds (audio attachments)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  attachmentDurationSeconds?: number;
 }
 
 export class MarkChatReadDto {
@@ -67,8 +74,11 @@ export class ChatMessageDto {
   @ApiProperty({ nullable: true })
   attachmentFileId: string | null;
 
-  @ApiProperty({ nullable: true, description: "'image' | 'file'" })
+  @ApiProperty({ nullable: true, description: "'image' | 'voice' | 'file'" })
   attachmentType: string | null;
+
+  @ApiProperty({ nullable: true, example: 15, description: 'Voice message length in seconds' })
+  attachmentDurationSeconds: number | null;
 
   @ApiProperty({ example: '2026-07-07T09:00:00.000Z' })
   sentAt: string;

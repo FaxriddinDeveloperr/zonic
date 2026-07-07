@@ -23,6 +23,8 @@ export interface UploadedFile {
 }
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
+// Voice-message audio formats (Flutter recorders usually emit .m4a/.aac/.opus).
+const AUDIO_EXTS = new Set(['.m4a', '.aac', '.mp3', '.ogg', '.oga', '.opus', '.wav', '.amr', '.webm']);
 const EXT_TO_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -31,7 +33,23 @@ const EXT_TO_MIME: Record<string, string> = {
   '.gif': 'image/gif',
   '.heic': 'image/heic',
   '.pdf': 'application/pdf',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.opus': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.amr': 'audio/amr',
+  '.webm': 'audio/webm',
 };
+
+/** Attachment kind from a file id's extension: image / voice / file. */
+function typeOfExt(ext: string): 'image' | 'voice' | 'file' {
+  if (IMAGE_EXTS.has(ext)) return 'image';
+  if (AUDIO_EXTS.has(ext)) return 'voice';
+  return 'file';
+}
 
 @Injectable()
 export class ChatService {
@@ -62,6 +80,7 @@ export class ChatService {
     peerId: string,
     text: string | null,
     attachmentFileId: string | null,
+    attachmentDurationSeconds: number | null = null,
   ): Promise<{ message: ChatMessageDto; recipientId: string; senderUsername: string | null }> {
     if (senderId === peerId) throw badRequest(['You cannot message yourself.']);
     const trimmed = text?.trim() ? text.trim() : null;
@@ -75,6 +94,10 @@ export class ChatService {
 
     const conversationId = await this.getOrCreateConversation(senderId, peerId);
     const attachmentType = attachmentFileId ? ChatService.attachmentTypeOf(attachmentFileId) : null;
+    // Duration only meaningful for a voice attachment.
+    const duration = attachmentType === 'voice' && attachmentDurationSeconds != null
+      ? Math.max(0, Math.round(attachmentDurationSeconds))
+      : null;
     const [sender] = await this.dataSource.query(
       `SELECT zonic_id, username FROM sys_user WHERE id = $1`,
       [senderId],
@@ -82,10 +105,11 @@ export class ChatService {
 
     const [row] = await this.dataSource.query(
       `INSERT INTO game_chat_message
-         (conversation_id, sender_id, recipient_id, text, attachment_file_id, attachment_type)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (conversation_id, sender_id, recipient_id, text, attachment_file_id, attachment_type,
+          attachment_duration_seconds)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id::text, sent_at`,
-      [conversationId, senderId, peerId, trimmed, attachmentFileId ?? null, attachmentType],
+      [conversationId, senderId, peerId, trimmed, attachmentFileId ?? null, attachmentType, duration],
     );
 
     const message: ChatMessageDto = {
@@ -96,6 +120,7 @@ export class ChatService {
       text: trimmed,
       attachmentFileId: attachmentFileId ?? null,
       attachmentType,
+      attachmentDurationSeconds: duration,
       sentAt: formatIso(new Date(row.sent_at)),
       isRead: false,
     };
@@ -116,6 +141,7 @@ export class ChatService {
       text: string | null;
       attachment_file_id: string | null;
       attachment_type: string | null;
+      attachment_duration_seconds: number | null;
       sent_at: Date;
       is_read: boolean;
     }> = await this.dataSource.query(
@@ -126,7 +152,7 @@ export class ChatService {
        )
        SELECT m.id::text, m.conversation_id::text, m.sender_id::text,
               u.zonic_id AS sender_zonic_id, m.text, m.attachment_file_id, m.attachment_type,
-              m.sent_at, m.is_read
+              m.attachment_duration_seconds, m.sent_at, m.is_read
          FROM game_chat_message m
          JOIN sys_user u ON u.id = m.sender_id
         WHERE ((m.sender_id = $1 AND m.recipient_id = $2)
@@ -144,6 +170,7 @@ export class ChatService {
       text: r.text,
       attachmentFileId: r.attachment_file_id,
       attachmentType: r.attachment_type,
+      attachmentDurationSeconds: r.attachment_duration_seconds,
       sentAt: formatIso(new Date(r.sent_at)),
       isRead: r.is_read,
     }));
@@ -283,8 +310,11 @@ export class ChatService {
     if (!ext && file.mimetype?.startsWith('image/')) {
       ext = file.mimetype === 'image/png' ? '.png' : '.jpg';
     }
+    if (!ext && file.mimetype?.startsWith('audio/')) {
+      ext = file.mimetype.includes('mpeg') ? '.mp3' : file.mimetype.includes('aac') ? '.aac' : '.m4a';
+    }
     if (!/^\.[a-z0-9]{1,8}$/.test(ext)) ext = '.bin';
-    const attachmentType = IMAGE_EXTS.has(ext) ? 'image' : 'file';
+    const attachmentType = typeOfExt(ext);
     const fileId = `${randomUUID()}${ext}`;
     writeFileSync(join(this.chatDir, fileId), file.buffer);
     return { fileId, attachmentType };
@@ -301,6 +331,6 @@ export class ChatService {
   }
 
   static attachmentTypeOf(fileId: string): string {
-    return IMAGE_EXTS.has(extname(fileId).toLowerCase()) ? 'image' : 'file';
+    return typeOfExt(extname(fileId).toLowerCase());
   }
 }

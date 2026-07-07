@@ -111,6 +111,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       peerId?: string;
       text?: string;
       attachmentFileId?: string;
+      attachmentDurationSeconds?: number;
       clientTempId?: string;
     };
     if (!p.peerId) return;
@@ -120,6 +121,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         p.peerId,
         p.text ?? null,
         p.attachmentFileId ?? null,
+        p.attachmentDurationSeconds ?? null,
       );
       await this.deliver(message, recipientId, userId, senderUsername, {
         echoToSender: true,
@@ -168,7 +170,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.to(recipientId).emit('MessageReceived', message);
     } else {
       const preview =
-        message.text ?? (message.attachmentType === 'image' ? '📷 Rasm' : '📎 Fayl');
+        message.text ??
+        (message.attachmentType === 'image'
+          ? '📷 Rasm'
+          : message.attachmentType === 'voice'
+            ? '🎤 Ovozli xabar'
+            : '📎 Fayl');
       await this.notifications.create(
         recipientId,
         'chat_message',

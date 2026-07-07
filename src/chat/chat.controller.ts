@@ -88,6 +88,7 @@ export class ChatController {
       dto.peerId,
       dto.text ?? null,
       dto.attachmentFileId ?? null,
+      dto.attachmentDurationSeconds ?? null,
     );
     // Deliver to the recipient (live or push). Don't echo to the sender — they have the HTTP response.
     await this.gateway.deliver(message, recipientId, user.userId, senderUsername, {
