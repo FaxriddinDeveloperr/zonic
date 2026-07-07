@@ -42,12 +42,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.data.userId = userId;
     void client.join(userId); // a room per user → emit to all of a user's devices
     const set = this.online.get(userId) ?? new Set<string>();
+    const wasOffline = set.size === 0;
     set.add(client.id);
     this.online.set(userId, set);
     client.emit('Connected', client.id);
 
     client.on('SendMessage', (payload: unknown) => void this.onSend(client, payload));
     client.on('MarkRead', (payload: unknown) => void this.onMarkRead(client, payload));
+    client.on('Typing', (payload: unknown) => this.onTyping(client, payload));
+    client.on('GetPresence', (payload: unknown) => void this.onGetPresence(client, payload));
+
+    if (wasOffline) {
+      // First device online now → refresh last_seen and tell peers they're online.
+      void this.chat.touchLastSeen(userId).then((seen) =>
+        this.broadcastPresence(userId, true, seen.toISOString()),
+      );
+    }
   }
 
   handleDisconnect(client: Socket): void {
@@ -55,11 +65,44 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!userId) return;
     const set = this.online.get(userId);
     set?.delete(client.id);
-    if (set && set.size === 0) this.online.delete(userId);
+    if (set && set.size === 0) {
+      this.online.delete(userId);
+      // Last device gone → stamp last_seen and tell peers they went offline.
+      void this.chat.touchLastSeen(userId).then((seen) =>
+        this.broadcastPresence(userId, false, seen.toISOString()),
+      );
+    }
   }
 
-  private isOnline(userId: string): boolean {
+  isOnline(userId: string): boolean {
     return (this.online.get(userId)?.size ?? 0) > 0;
+  }
+
+  /** Relay "typing…" from one peer to the other (Telegram-style), no persistence. */
+  private onTyping(client: Socket, payload: unknown): void {
+    const userId = client.data.userId as string;
+    const p = (payload ?? {}) as { peerId?: string; isTyping?: boolean };
+    if (!p.peerId) return;
+    if (this.isOnline(p.peerId)) {
+      this.server.to(p.peerId).emit('PeerTyping', { peerId: userId, isTyping: p.isTyping !== false });
+    }
+  }
+
+  private async onGetPresence(client: Socket, payload: unknown): Promise<void> {
+    const p = (payload ?? {}) as { peerId?: string };
+    if (!p.peerId) return;
+    const lastSeenAt = await this.chat.getLastSeen(p.peerId);
+    client.emit('PresenceChanged', { userId: p.peerId, online: this.isOnline(p.peerId), lastSeenAt });
+  }
+
+  /** Notify a user's online conversation-peers that their presence changed. */
+  private async broadcastPresence(userId: string, online: boolean, lastSeenAt: string): Promise<void> {
+    const peers = await this.chat.getConversationPeers(userId);
+    for (const peerId of peers) {
+      if (this.isOnline(peerId)) {
+        this.server.to(peerId).emit('PresenceChanged', { userId, online, lastSeenAt });
+      }
+    }
   }
 
   private async onSend(client: Socket, payload: unknown): Promise<void> {

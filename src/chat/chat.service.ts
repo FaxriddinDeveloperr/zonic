@@ -144,10 +144,40 @@ export class ChatService {
     return { items, page, pageSize };
   }
 
+  /** userIds this user has a conversation with (to notify of presence changes). */
+  async getConversationPeers(userId: string): Promise<string[]> {
+    const rows: Array<{ peer: string }> = await this.dataSource.query(
+      `SELECT (CASE WHEN user_a = $1 THEN user_b ELSE user_a END)::text AS peer
+         FROM game_chat_conversation WHERE user_a = $1 OR user_b = $1`,
+      [userId],
+    );
+    return rows.map((r) => r.peer);
+  }
+
+  async touchLastSeen(userId: string): Promise<Date> {
+    const [row] = await this.dataSource.query(
+      `UPDATE sys_user SET last_seen_at = now() WHERE id = $1 RETURNING last_seen_at`,
+      [userId],
+    );
+    // UPDATE ... RETURNING comes back as [rows, count] in some drivers; re-read defensively.
+    if (row?.last_seen_at) return new Date(row.last_seen_at);
+    const [r2] = await this.dataSource.query(`SELECT last_seen_at FROM sys_user WHERE id = $1`, [userId]);
+    return r2?.last_seen_at ? new Date(r2.last_seen_at) : new Date();
+  }
+
+  async getLastSeen(userId: string): Promise<string | null> {
+    const [row] = await this.dataSource.query(
+      `SELECT last_seen_at FROM sys_user WHERE id = $1`,
+      [userId],
+    );
+    return row?.last_seen_at ? formatIso(new Date(row.last_seen_at)) : null;
+  }
+
   async getConversations(
     userId: string,
     page: number,
     pageSize: number,
+    isOnline: (id: string) => boolean = () => false,
   ): Promise<ConversationsResponseDto> {
     // For each conversation the user is part of: the peer, the latest message, and unread count.
     const rows: Array<{
@@ -156,6 +186,7 @@ export class ChatService {
       peer_zonic_id: number | null;
       peer_username: string | null;
       peer_avatar_file_id: string | null;
+      peer_last_seen: Date | null;
       last_text: string | null;
       last_attachment_type: string | null;
       last_at: Date | null;
@@ -163,7 +194,7 @@ export class ChatService {
     }> = await this.dataSource.query(
       `SELECT c.id::text AS conversation_id,
               p.id::text AS peer_id, p.zonic_id AS peer_zonic_id, p.username AS peer_username,
-              p.avatar_file_id AS peer_avatar_file_id,
+              p.avatar_file_id AS peer_avatar_file_id, p.last_seen_at AS peer_last_seen,
               lm.text AS last_text, lm.attachment_type AS last_attachment_type, lm.sent_at AS last_at,
               (SELECT COUNT(*) FROM game_chat_message um
                  WHERE um.conversation_id = c.id AND um.recipient_id = $1 AND um.is_read = false) AS unread
@@ -184,6 +215,8 @@ export class ChatService {
       peerZonicId: r.peer_zonic_id,
       peerUsername: r.peer_username,
       peerAvatarFileId: r.peer_avatar_file_id,
+      peerOnline: isOnline(r.peer_id),
+      peerLastSeenAt: r.peer_last_seen ? formatIso(new Date(r.peer_last_seen)) : null,
       lastMessageText: r.last_text,
       lastAttachmentType: r.last_attachment_type,
       lastMessageAt: r.last_at ? formatIso(new Date(r.last_at)) : null,

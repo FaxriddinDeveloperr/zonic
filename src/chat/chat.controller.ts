@@ -27,6 +27,8 @@ import {
   ChatPageQueryDto,
   ConversationsResponseDto,
   MarkChatReadDto,
+  PresenceDto,
+  PresenceQueryDto,
   SendMessageDto,
   UploadAttachmentResponseDto,
 } from './dto/chat.dto';
@@ -50,7 +52,18 @@ export class ChatController {
     @CurrentUser() user: AuthUser,
     @Query() q: ChatPageQueryDto,
   ): Promise<ConversationsResponseDto> {
-    return this.chat.getConversations(user.userId, q.Page, q.PageSize);
+    return this.chat.getConversations(user.userId, q.Page, q.PageSize, (id) => this.gateway.isOnline(id));
+  }
+
+  @Get('Presence')
+  @ApiOperation({ summary: "A peer's online status + last-seen time" })
+  @ApiOkResponse({ type: PresenceDto })
+  async presence(@Query() q: PresenceQueryDto): Promise<PresenceDto> {
+    return {
+      userId: q.peerId,
+      online: this.gateway.isOnline(q.peerId),
+      lastSeenAt: await this.chat.getLastSeen(q.peerId),
+    };
   }
 
   @Get('Messages')

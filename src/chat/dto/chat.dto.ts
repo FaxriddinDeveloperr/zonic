@@ -104,6 +104,12 @@ export class ConversationDto {
   @ApiProperty({ nullable: true })
   peerAvatarFileId: string | null;
 
+  @ApiProperty({ description: 'Peer currently connected to /hubs/chat' })
+  peerOnline: boolean;
+
+  @ApiProperty({ nullable: true, example: '2026-07-07T09:00:00.000Z', description: 'Last time peer was online' })
+  peerLastSeenAt: string | null;
+
   @ApiProperty({ nullable: true, description: 'Preview of the last message (text or attachment marker)' })
   lastMessageText: string | null;
 
@@ -126,6 +132,23 @@ export class ConversationsResponseDto {
 
   @ApiProperty()
   pageSize: number;
+}
+
+export class PresenceQueryDto {
+  @ApiProperty({ format: 'uuid', description: "Peer's userId (uuid)" })
+  @IsString()
+  peerId: string;
+}
+
+export class PresenceDto {
+  @ApiProperty({ format: 'uuid' })
+  userId: string;
+
+  @ApiProperty({ description: 'Currently connected to /hubs/chat' })
+  online: boolean;
+
+  @ApiProperty({ nullable: true, example: '2026-07-07T09:00:00.000Z' })
+  lastSeenAt: string | null;
 }
 
 export class UploadAttachmentResponseDto {
