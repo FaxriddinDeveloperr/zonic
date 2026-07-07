@@ -38,8 +38,11 @@ export class ChallengesService {
     private readonly friends: FriendsService,
   ) {}
 
-  /** Fixed challenge cost — every challenge costs 100 coins (each side stakes 100; winner takes 200). */
-  static readonly CHALLENGE_COST = 100;
+  /**
+   * Challenges are FREE to create/accept (nobody stakes anything). When the duel is settled the
+   * SYSTEM pays the winner this fixed prize; a tie pays nobody.
+   */
+  static readonly WINNER_PRIZE = 200;
 
   async create(
     userId: string,
@@ -55,10 +58,11 @@ export class ChallengesService {
     const start = parseFlexibleDateTime(startAt);
     if (!start) throw badRequest(['startAt is not a valid date.']);
 
+    // bet column now records the system prize for display (nothing is taken from players).
     const [ins]: Array<{ id: string }> = await this.dataSource.query(
       `INSERT INTO game_challenge (challenger_id, opponent_id, goal_type, start_at, bet, status)
        VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING id::text`,
-      [userId, opponent.userId, goalType, start, ChallengesService.CHALLENGE_COST],
+      [userId, opponent.userId, goalType, start, ChallengesService.WINNER_PRIZE],
     );
     // (Push notification to the opponent would fire here.)
     return this.getOne(ins.id, userId);
@@ -81,12 +85,7 @@ export class ChallengesService {
         );
         return { ok: true, status: 'declined' };
       }
-      // Escrow the bet from BOTH wallets now that the duel is real.
-      const bet = Number(row.bet);
-      if (bet > 0) {
-        await ChallengesService.debitTanga(manager, row.challenger_id, bet, 'challenger');
-        await ChallengesService.debitTanga(manager, userId, bet, 'opponent');
-      }
+      // No escrow — challenges are free; the system pays the winner at finish.
       await manager.query(
         `UPDATE game_challenge SET status = 'accepted', responded_at = now() WHERE id = $1`,
         [challengeId],
@@ -96,9 +95,9 @@ export class ChallengesService {
   }
 
   /**
-   * Settle an accepted duel: measure each side's progress in the goal metric from start_at to now,
-   * pay the pot (2×bet) to the winner, or refund both on a tie. Callable by either participant
-   * once the start time has passed. Idempotent (re-finishing returns the stored result).
+   * Settle an accepted duel: measure each side's progress in the goal metric from start_at to now;
+   * the SYSTEM pays the winner WINNER_PRIZE (a tie pays nobody — nothing was staked). Callable by
+   * either participant once the start time has passed. Idempotent (re-finishing returns the result).
    */
   async finish(userId: string, challengeId: string): Promise<ChallengeDto> {
     await this.dataSource.transaction(async (manager) => {
@@ -118,20 +117,14 @@ export class ChallengesService {
       const now = new Date();
       const a = await ChallengesService.progress(manager, c.challenger_id, c.goal_type, c.start_at, now);
       const b = await ChallengesService.progress(manager, c.opponent_id, c.goal_type, c.start_at, now);
-      const bet = Number(c.bet);
 
       let winner: string | null = null;
       if (a > b) winner = c.challenger_id;
       else if (b > a) winner = c.opponent_id;
 
-      if (bet > 0) {
-        if (winner) {
-          await ChallengesService.creditTanga(manager, winner, bet * 2); // pot
-        } else {
-          // Tie → refund both.
-          await ChallengesService.creditTanga(manager, c.challenger_id, bet);
-          await ChallengesService.creditTanga(manager, c.opponent_id, bet);
-        }
+      // System pays the winner a fixed prize (nothing was staked); a tie pays nobody.
+      if (winner) {
+        await ChallengesService.creditTanga(manager, winner, ChallengesService.WINNER_PRIZE);
       }
       await manager.query(
         `UPDATE game_challenge SET status = 'finished', winner_user_id = $2, finished_at = now()
@@ -140,29 +133,6 @@ export class ChallengesService {
       );
     });
     return this.getOne(challengeId, userId);
-  }
-
-  private static async debitTanga(
-    manager: { query: (sql: string, params?: unknown[]) => Promise<any> },
-    userId: string,
-    amount: number,
-    who: string,
-  ): Promise<void> {
-    await manager.query(
-      `INSERT INTO game_user_wallet (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
-      [userId],
-    );
-    const [w] = await manager.query(
-      `SELECT tanga FROM game_user_wallet WHERE user_id = $1 FOR UPDATE`,
-      [userId],
-    );
-    if (Number(w.tanga) < amount) {
-      throw badRequest([`Insufficient Tanga to stake the bet (${who}).`]);
-    }
-    await manager.query(
-      `UPDATE game_user_wallet SET tanga = tanga - $2, updated_at = now() WHERE user_id = $1`,
-      [userId, amount],
-    );
   }
 
   private static async creditTanga(
