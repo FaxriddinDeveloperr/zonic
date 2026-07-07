@@ -30,6 +30,18 @@ export class RoutePointDto {
   @IsString()
   @IsNotEmpty()
   ts: string;
+
+  @ApiPropertyOptional({ example: 8.5, description: 'GPS horizontal accuracy in metres (lower = better). Used to drop noisy points.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  accuracy?: number;
+
+  @ApiPropertyOptional({ example: 3.2, description: "Device-reported speed (m/s), optional" })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  speed?: number;
 }
 
 export class SaveFreeRunDto {

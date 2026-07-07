@@ -21,6 +21,12 @@ export interface GameConfig {
   captureDistanceRatio: number; // full capture: run_km ≥ area_km² × ratio
 }
 
+export interface FreeRunConfig {
+  maxAccuracyM: number;
+  maxSpeedMps: number;
+  minSegmentM: number;
+}
+
 export interface JwtConfig {
   secretKey: string;
   issuer: string;
@@ -61,6 +67,7 @@ export interface AppConfiguration {
   };
   jwt: JwtConfig;
   game: GameConfig;
+  freeRun: FreeRunConfig;
   economy: EconomyConfig;
   social: SocialAuthConfig;
 }
@@ -104,6 +111,13 @@ export default (): AppConfiguration => ({
     minZoneAreaM2: num(process.env.GAME_MIN_ZONE_AREA_M2, 10),
     mergeCentroidM: num(process.env.GAME_MERGE_CENTROID_M, 500),
     captureDistanceRatio: num(process.env.GAME_CAPTURE_DISTANCE_RATIO, 1.33),
+  },
+  // Free-run GPS cleaning (independent of the zone-capture filter above). Applied when a run is
+  // saved: drop poor-accuracy points, GPS teleport jumps, and stationary jitter before summing.
+  freeRun: {
+    maxAccuracyM: num(process.env.FREE_RUN_MAX_ACCURACY_M, 30), // drop points worse than this
+    maxSpeedMps: num(process.env.FREE_RUN_MAX_SPEED_MPS, 12), // ~43 km/h — faster = GPS glitch
+    minSegmentM: num(process.env.FREE_RUN_MIN_SEGMENT_M, 2), // shorter hop = stationary jitter
   },
   economy: {
     // Coins credited automatically: 200 per km run / per 1000 steps; territory capture pays
