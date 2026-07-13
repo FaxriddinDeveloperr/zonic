@@ -10,6 +10,7 @@ import { formatIso, parseFlexibleDateTime } from '../common/helpers/datetime';
 import { badRequest } from '../common/validation-problem';
 import { FriendsService } from '../friends/friends.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { weekMonday } from '../common/helpers/week';
 import {
   ChallengeDto,
   ChallengeGoal,
@@ -245,10 +246,15 @@ export class ChallengesService {
     userId: string,
     amount: number,
   ): Promise<void> {
+    // Coins are weekly: a balance from an earlier week is burned before the prize lands.
+    const monday = weekMonday();
     await manager.query(
-      `INSERT INTO game_user_wallet (user_id, tanga) VALUES ($1, $2)
-       ON CONFLICT (user_id) DO UPDATE SET tanga = game_user_wallet.tanga + $2, updated_at = now()`,
-      [userId, amount],
+      `INSERT INTO game_user_wallet (user_id, tanga, tanga_week) VALUES ($1, $2, $3)
+       ON CONFLICT (user_id) DO UPDATE
+         SET tanga = (CASE WHEN game_user_wallet.tanga_week = $3 THEN game_user_wallet.tanga ELSE 0 END) + $2,
+             tanga_week = $3,
+             updated_at = now()`,
+      [userId, amount, monday],
     );
   }
 

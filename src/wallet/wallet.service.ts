@@ -1,30 +1,36 @@
 // Wallet & daily reward (Phase J). Two currencies:
-//  • Tanga — persistent coin balance, only spent in the Market.
+//  • Tanga — coins earned from activity, spent in the Market. They live for ONE WEEK: everything
+//    unspent is burned at Monday 00:00 local (Tashkent). tanga_week records the week a balance
+//    belongs to; a mismatch with the current week means it has expired.
 //  • XP — expiring rating currency; reset once its retention window (24h free) rolls over.
-// Earn-rates come from config. The daily reward converts activity since the last claim into both
-// currencies. Reads existing activity tables only — no run/free-run/territory write path changes.
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { EconomyConfig } from '../config/configuration';
 import { SubscriptionService } from '../subscription/subscription.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { weekEndsAt, weekMonday } from '../common/helpers/week';
 import { WalletDto, DailyRewardDto } from './dto/wallet.dto';
 
 interface WalletRow {
   tanga: string;
   xp: string;
   xp_date: string | null; // 'YYYY-MM-DD'
+  tanga_week: string | null; // 'YYYY-MM-DD' — the local Monday this balance belongs to
   last_reward_at: Date | null;
 }
 
 @Injectable()
 export class WalletService {
   private readonly econ: EconomyConfig;
+  private readonly logger = new Logger(WalletService.name);
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly subscription: SubscriptionService,
+    private readonly notifications: NotificationsService,
     config: ConfigService,
   ) {
     this.econ = config.get<EconomyConfig>('economy')!;
@@ -36,17 +42,28 @@ export class WalletService {
     return sub.tier === 'free' ? this.econ.xpRetentionHours : this.econ.xpRetentionHoursPremium;
   }
 
-  /** Read the wallet, lazily zeroing XP whose retention window has passed. */
+  /** Read the wallet, lazily burning last week's Tanga and XP past its retention window. */
   async getWallet(userId: string): Promise<WalletDto> {
     const row = await this.loadOrCreate(userId);
     const { xp, expiresAt } = this.applyXpExpiry(row, await this.retentionHours(userId));
-    if (xp !== Number(row.xp)) {
+
+    // Tanga from an earlier week is gone.
+    const monday = weekMonday();
+    const tanga = row.tanga_week === monday ? Number(row.tanga) : 0;
+
+    if (xp !== Number(row.xp) || tanga !== Number(row.tanga)) {
       await this.dataSource.query(
-        `UPDATE game_user_wallet SET xp = $2, updated_at = now() WHERE user_id = $1`,
-        [userId, xp],
+        `UPDATE game_user_wallet SET xp = $2, tanga = $3, tanga_week = $4, updated_at = now()
+          WHERE user_id = $1`,
+        [userId, xp, tanga, monday],
       );
     }
-    return { tanga: Number(row.tanga), xp, xpExpiresAt: xp > 0 ? expiresAt : null };
+    return {
+      tanga,
+      tangaExpiresAt: weekEndsAt().toISOString(),
+      xp,
+      xpExpiresAt: xp > 0 ? expiresAt : null,
+    };
   }
 
   /**
@@ -78,12 +95,54 @@ export class WalletService {
     const today = WalletService.utcDateStr(new Date());
     const { xp: currentXp } = this.applyXpExpiry(row, await this.retentionHours(userId));
     const newXp = (row.xp_date === today ? currentXp : 0) + Math.max(0, Math.round(xp));
-    const newTanga = Number(row.tanga) + Math.max(0, Math.round(tanga));
+    // Coins from a previous week are burned before this credit lands.
+    const monday = weekMonday();
+    const base = row.tanga_week === monday ? Number(row.tanga) : 0;
+    const newTanga = base + Math.max(0, Math.round(tanga));
     await this.dataSource.query(
-      `UPDATE game_user_wallet SET tanga = $2, xp = $3, xp_date = $4, updated_at = now()
+      `UPDATE game_user_wallet
+          SET tanga = $2, tanga_week = $5, xp = $3, xp_date = $4, updated_at = now()
         WHERE user_id = $1`,
-      [userId, newTanga, newXp, today],
+      [userId, newTanga, newXp, today, monday],
     );
+  }
+
+  /**
+   * Burn every wallet still holding a previous week's coins. Runs often so the DB is truthful right
+   * after the Monday 00:00 (Tashkent) rollover, even for users who don't open the app.
+   */
+  @Cron('*/10 * * * *')
+  async burnExpiredTanga(): Promise<void> {
+    const monday = weekMonday();
+    const res = await this.dataSource.query(
+      `UPDATE game_user_wallet SET tanga = 0, tanga_week = $1, updated_at = now()
+        WHERE tanga_week IS DISTINCT FROM $1 AND tanga > 0`,
+      [monday],
+    );
+    const burned = Array.isArray(res) ? (res[1] ?? 0) : 0;
+    if (burned) this.logger.log(`Weekly Tanga burn: ${burned} wallet(s) reset for week ${monday}`);
+  }
+
+  /**
+   * Sunday 20:00 Tashkent — warn everyone still holding coins that they burn on Monday 00:00.
+   */
+  @Cron('0 20 * * 0', { timeZone: 'Asia/Tashkent' })
+  async warnTangaExpiry(): Promise<void> {
+    const monday = weekMonday();
+    const rows: Array<{ user_id: string; tanga: string }> = await this.dataSource.query(
+      `SELECT user_id::text, tanga FROM game_user_wallet WHERE tanga_week = $1 AND tanga > 0`,
+      [monday],
+    );
+    for (const r of rows) {
+      await this.notifications.create(
+        r.user_id,
+        'tanga_expiring',
+        `${r.tanga} tanga ertaga yonadi!`,
+        'Dushanba 00:00 da ishlatilmagan tangalar 0 ga tushadi — Marketda sarflang.',
+        { tanga: Number(r.tanga), expiresAt: weekEndsAt().toISOString() },
+      );
+    }
+    if (rows.length) this.logger.log(`Tanga expiry warning sent to ${rows.length} user(s)`);
   }
 
   /**
@@ -101,7 +160,8 @@ export class WalletService {
       [userId],
     );
     const [row] = await this.dataSource.query(
-      `SELECT tanga, xp, to_char(xp_date, 'YYYY-MM-DD') AS xp_date, last_reward_at
+      `SELECT tanga, xp, to_char(xp_date, 'YYYY-MM-DD') AS xp_date,
+              to_char(tanga_week, 'YYYY-MM-DD') AS tanga_week, last_reward_at
          FROM game_user_wallet WHERE user_id = $1`,
       [userId],
     );

@@ -2,8 +2,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class WalletDto {
-  @ApiProperty({ example: 12500, description: 'Persistent coin balance (spent in Market)' })
+  @ApiProperty({ example: 12500, description: 'Coin balance for THIS week (burned Monday 00:00 Tashkent)' })
   tanga: number;
+
+  @ApiProperty({
+    example: '2026-07-20T00:00:00.000Z',
+    description: 'When unspent Tanga burns (next Monday 00:00 Tashkent, as UTC)',
+  })
+  tangaExpiresAt: string;
 
   @ApiProperty({ example: 9000, description: 'Current XP (expires after the retention window)' })
   xp: number;

@@ -9,6 +9,7 @@ import { EconomyConfig } from '../config/configuration';
 import { badRequest } from '../common/validation-problem';
 import { formatIso } from '../common/helpers/datetime';
 import { WalletService } from '../wallet/wallet.service';
+import { weekMonday } from '../common/helpers/week';
 import {
   InventoryItemDto,
   InventoryResponseDto,
@@ -114,12 +115,16 @@ export class MarketService {
       if (!item) throw badRequest(['Item not found or inactive.']);
       const price = Number(item.price_tanga);
 
-      const walletRows: Array<{ tanga: string; xp: string }> = await manager.query(
-        `SELECT tanga, xp FROM game_user_wallet WHERE user_id = $1 FOR UPDATE`,
-        [userId],
-      );
-      const w = walletRows[0] ?? { tanga: '0', xp: '0' };
-      const balanceTanga = Number(w.tanga);
+      const monday = weekMonday();
+      const walletRows: Array<{ tanga: string; xp: string; tanga_week: string | null }> =
+        await manager.query(
+          `SELECT tanga, xp, to_char(tanga_week, 'YYYY-MM-DD') AS tanga_week
+             FROM game_user_wallet WHERE user_id = $1 FOR UPDATE`,
+          [userId],
+        );
+      const w = walletRows[0] ?? { tanga: '0', xp: '0', tanga_week: null };
+      // Coins from a previous week are already burned — they can't be spent.
+      const balanceTanga = w.tanga_week === monday ? Number(w.tanga) : 0;
       const balanceXp = Number(w.xp);
 
       // XP discount — never spend more XP than needed to cover the price (or than is available).
@@ -137,8 +142,9 @@ export class MarketService {
       const newTanga = balanceTanga - pricePaid;
       const newXp = balanceXp - xpSpent;
       await manager.query(
-        `UPDATE game_user_wallet SET tanga = $2, xp = $3, updated_at = now() WHERE user_id = $1`,
-        [userId, newTanga, newXp],
+        `UPDATE game_user_wallet SET tanga = $2, xp = $3, tanga_week = $4, updated_at = now()
+          WHERE user_id = $1`,
+        [userId, newTanga, newXp, monday],
       );
 
       const [ins]: Array<{ id: string }> = await manager.query(
