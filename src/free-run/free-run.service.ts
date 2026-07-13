@@ -145,6 +145,7 @@ export class FreeRunService {
       .addSelect('u.zonic_id', 'zonicid')
       .addSelect('u.username', 'username')
       .addSelect('u.avatar_file_id', 'avatarfileid')
+      .addSelect('u.selected_frame_code', 'framecode')
       .addSelect('SUM(r.distance_km)', 'totaldistance')
       .addSelect('COUNT(*)', 'totalruns')
       .addSelect('MIN(NULLIF(r.pace_min_per_km, 0))', 'bestpace')
@@ -153,6 +154,7 @@ export class FreeRunService {
       .addGroupBy('u.zonic_id')
       .addGroupBy('u.username')
       .addGroupBy('u.avatar_file_id')
+      .addGroupBy('u.selected_frame_code')
       .orderBy('SUM(r.distance_km)', 'DESC')
       .offset((page - 1) * pageSize)
       .limit(pageSize);
@@ -164,6 +166,7 @@ export class FreeRunService {
         zonicid: number | null;
         username: string;
         avatarfileid: string | null;
+        framecode: string | null;
         totaldistance: string;
         totalruns: string;
         bestpace: string | null;
@@ -177,6 +180,7 @@ export class FreeRunService {
       zonicId: x.zonicid,
       username: x.username,
       avatarFileId: x.avatarfileid,
+      selectedFrameCode: x.framecode,
       totalDistanceKm: round(Number(x.totaldistance ?? 0), 2),
       totalRuns: Number(x.totalruns ?? 0),
       bestPaceMinPerKm: x.bestpace == null ? 0 : round(Number(x.bestpace), 2),

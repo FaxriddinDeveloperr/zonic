@@ -12,6 +12,9 @@ export class MyIdDto {
 
   @ApiProperty({ nullable: true })
   avatarFileId: string | null;
+
+  @ApiProperty({ example: 'frame_gold', nullable: true, description: 'Equipped avatar frame code' })
+  selectedFrameCode: string | null;
 }
 
 export class UserSummaryDto {
@@ -26,6 +29,9 @@ export class UserSummaryDto {
 
   @ApiProperty({ nullable: true })
   avatarFileId: string | null;
+
+  @ApiProperty({ example: 'frame_gold', nullable: true, description: 'Equipped avatar frame code' })
+  selectedFrameCode: string | null;
 
   @ApiProperty({ nullable: true, example: 'beginner' })
   level: string | null;

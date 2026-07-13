@@ -166,14 +166,15 @@ export class RunSessionService {
       zonic_id: number | null;
       username: string;
       avatar_file_id: string | null;
+      selected_frame_code: string | null;
       totaldistance: string;
     }> = await this.sessions.manager.query(
-      `SELECT u.id::text AS userid, u.zonic_id, u.username AS username, u.avatar_file_id,
+      `SELECT u.id::text AS userid, u.zonic_id, u.username AS username, u.avatar_file_id, u.selected_frame_code,
               SUM(s.total_distance_meters) AS totaldistance
          FROM game_run_session s
          JOIN sys_user u ON u.id = s.user_id
         WHERE s.ended_at IS NOT NULL ${filterSql}
-        GROUP BY u.id, u.zonic_id, u.username, u.avatar_file_id
+        GROUP BY u.id, u.zonic_id, u.username, u.avatar_file_id, u.selected_frame_code
         ORDER BY SUM(s.total_distance_meters) DESC
         LIMIT ${pageSize} OFFSET ${offset}`,
       filterParams,
@@ -186,6 +187,7 @@ export class RunSessionService {
       zonicId: x.zonic_id,
       username: x.username,
       avatarFileId: x.avatar_file_id,
+      selectedFrameCode: x.selected_frame_code,
       totalDistance: round(Number(x.totaldistance) / 1000.0, 2),
     }));
 

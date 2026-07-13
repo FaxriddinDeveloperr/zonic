@@ -14,6 +14,9 @@ export class ZoneDetailsDto {
   @ApiProperty({ nullable: true })
   ownerUsername: string | null;
 
+  @ApiProperty({ nullable: true, example: 'frame_gold', description: "Owner's equipped avatar frame" })
+  ownerSelectedFrameCode: string | null;
+
   @ApiProperty({ nullable: true, description: 'Avatar file id (GUID) — GET /UserProfile/DownloadAvatar?fileId=…' })
   ownerAvatarFileId: string | null;
 

@@ -64,12 +64,14 @@ export class ZonesService {
       owneruserid: string;
       username: string | null;
       zonic_id: number | null;
+      selected_frame_code: string | null;
       color: string;
       area_m2: number;
       captured_at: Date | null;
       poly: string;
     }> = await this.dataSource.query(
       `SELECT t.id::text AS zoneid, t.owner_user_id::text AS owneruserid, u.username, u.zonic_id,
+              u.selected_frame_code,
               t.color, t.area_m2, t.captured_at, ST_AsGeoJSON((d).geom) AS poly
          FROM game_territory t
          JOIN sys_user u ON u.id = t.owner_user_id
@@ -87,12 +89,14 @@ export class ZonesService {
       owneruserid: string;
       username: string | null;
       zonic_id: number | null;
+      selected_frame_code: string | null;
       color: string;
       area_m2: number;
       captured_at: Date | null;
       poly: string;
     }> = await this.dataSource.query(
       `SELECT t.id::text AS zoneid, t.owner_user_id::text AS owneruserid, u.username, u.zonic_id,
+              u.selected_frame_code,
               t.color, t.area_m2, t.captured_at, ST_AsGeoJSON((d).geom) AS poly
          FROM game_territory t
          JOIN sys_user u ON u.id = t.owner_user_id
@@ -111,12 +115,14 @@ export class ZonesService {
       owneruserid: string;
       username: string | null;
       zonic_id: number | null;
+      selected_frame_code: string | null;
       color: string;
       area_m2: number;
       captured_at: Date | null;
       poly: string;
     }> = await this.dataSource.query(
       `SELECT t.id::text AS zoneid, t.owner_user_id::text AS owneruserid, u.username, u.zonic_id,
+              u.selected_frame_code,
               t.color, t.area_m2, t.captured_at, ST_AsGeoJSON((d).geom) AS poly
          FROM game_territory t
          JOIN sys_user u ON u.id = t.owner_user_id
@@ -157,11 +163,12 @@ export class ZonesService {
       zonic_id: number | null;
       username: string | null;
       avatar_file_id: string | null;
+      selected_frame_code: string | null;
       area_m2: number;
       captured_at: Date | null;
     }> = await this.dataSource.query(
       `SELECT t.id::text AS zoneid, t.owner_user_id::text AS owneruserid, u.zonic_id,
-              u.username, u.avatar_file_id, t.area_m2, t.captured_at
+              u.username, u.avatar_file_id, u.selected_frame_code, t.area_m2, t.captured_at
          FROM game_territory t
          JOIN sys_user u ON u.id = t.owner_user_id
         WHERE t.id = $1`,
@@ -174,6 +181,7 @@ export class ZonesService {
       ownerUserId: r.owneruserid,
       ownerZonicId: r.zonic_id,
       ownerUsername: r.username,
+      ownerSelectedFrameCode: r.selected_frame_code,
       ownerAvatarFileId: r.avatar_file_id,
       ownerAvatarUrl: r.avatar_file_id
         ? `/UserProfile/DownloadAvatar?fileId=${r.avatar_file_id}`
@@ -355,6 +363,7 @@ export class ZonesService {
     owneruserid: string;
     zonic_id: number | null;
     username: string | null;
+    selected_frame_code: string | null;
     color: string;
     area_m2: number;
     captured_at: Date | null;
@@ -365,6 +374,7 @@ export class ZonesService {
       ownerUserId: r.owneruserid,
       ownerZonicId: r.zonic_id,
       ownerUsername: r.username,
+      ownerSelectedFrameCode: r.selected_frame_code,
       color: r.color ?? DEFAULT_COLOR,
       areaKm2: ZonesService.round(r.area_m2 / 1_000_000, 4),
       capturedAt: r.captured_at ? formatDate(new Date(r.captured_at)) : null,

@@ -50,6 +50,10 @@ export class User {
   @Column({ name: 'selected_badge_code', type: 'varchar', nullable: true })
   selectedBadgeCode: string | null;
 
+  // Equipped avatar frame (market cosmetic) — visible to other users.
+  @Column({ name: 'selected_frame_code', type: 'varchar', nullable: true })
+  selectedFrameCode: string | null;
+
   // Daily step goal (pedometer). Default 10000.
   @Column({ name: 'step_goal', type: 'int', default: 10000 })
   stepGoal: number;

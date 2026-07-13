@@ -24,6 +24,9 @@ export class ZoneItemDto {
   @ApiProperty({ nullable: true })
   ownerUsername: string | null;
 
+  @ApiProperty({ nullable: true, example: 'frame_gold', description: "Owner's equipped avatar frame" })
+  ownerSelectedFrameCode: string | null;
+
   @ApiProperty({ example: '#FF0000' })
   color: string;
 

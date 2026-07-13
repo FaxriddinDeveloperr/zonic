@@ -123,6 +123,12 @@ export class UpdateMeDto {
   @MaxLength(60)
   selectedBadgeCode?: string;
 
+  @ApiPropertyOptional({ maxLength: 60, example: 'frame_gold', description: 'Equipped avatar frame code (market item)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  selectedFrameCode?: string;
+
   @ApiPropertyOptional({ example: 10000, description: 'Daily step goal' })
   @IsOptional()
   @Type(() => Number)

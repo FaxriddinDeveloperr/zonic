@@ -69,6 +69,9 @@ export class PublicProfileDto {
   @ApiProperty({ nullable: true })
   avatarFileId: string | null;
 
+  @ApiProperty({ example: 'frame_gold', nullable: true, description: 'Equipped avatar frame code' })
+  selectedFrameCode: string | null;
+
   @ApiProperty({ nullable: true })
   coverFileId: string | null;
 

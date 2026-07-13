@@ -14,6 +14,9 @@ export class LeaderboardItemDto {
   @ApiProperty({ nullable: true, description: 'Avatar file id — GET /UserProfile/DownloadAvatar?fileId=…' })
   avatarFileId: string | null;
 
+  @ApiProperty({ nullable: true, example: 'frame_gold', description: 'Equipped avatar frame code' })
+  selectedFrameCode: string | null;
+
   @ApiProperty()
   username: string;
 

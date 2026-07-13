@@ -27,15 +27,20 @@ export class FriendsService {
   async me(userId: string): Promise<MyIdDto> {
     const zonicId = await this.ensureZonicId(userId);
     const [u] = await this.dataSource.query(
-      `SELECT username, avatar_file_id FROM sys_user WHERE id = $1`,
+      `SELECT username, avatar_file_id, selected_frame_code FROM sys_user WHERE id = $1`,
       [userId],
     );
-    return { zonicId, username: u.username, avatarFileId: u.avatar_file_id };
+    return {
+      zonicId,
+      username: u.username,
+      avatarFileId: u.avatar_file_id,
+      selectedFrameCode: u.selected_frame_code ?? null,
+    };
   }
 
   async search(zonicId: number): Promise<UserSummaryDto> {
     const [u] = await this.dataSource.query(
-      `SELECT id::text, zonic_id, username, avatar_file_id, level
+      `SELECT id::text, zonic_id, username, avatar_file_id, selected_frame_code, level
          FROM sys_user WHERE zonic_id = $1`,
       [zonicId],
     );
@@ -45,6 +50,7 @@ export class FriendsService {
       zonicId: u.zonic_id,
       username: u.username,
       avatarFileId: u.avatar_file_id,
+      selectedFrameCode: u.selected_frame_code ?? null,
       level: u.level,
     };
   }
@@ -135,11 +141,12 @@ export class FriendsService {
       zonic_id: number;
       username: string;
       avatar_file_id: string | null;
+      selected_frame_code: string | null;
       level: string | null;
       last_activity: Date | null;
       has_territory: boolean;
     }> = await this.dataSource.query(
-      `SELECT u.id::text, u.zonic_id, u.username, u.avatar_file_id, u.level,
+      `SELECT u.id::text, u.zonic_id, u.username, u.avatar_file_id, u.selected_frame_code, u.level,
               GREATEST(
                 COALESCE((SELECT MAX(started_at) FROM game_free_run WHERE user_id = u.id), 'epoch'),
                 COALESCE((SELECT MAX(started_at) FROM game_step_activity WHERE user_id = u.id), 'epoch'),
@@ -160,6 +167,7 @@ export class FriendsService {
         zonicId: r.zonic_id,
         username: r.username,
         avatarFileId: r.avatar_file_id,
+        selectedFrameCode: r.selected_frame_code,
         level: r.level,
         lastActivityAt: la && !isEpoch ? formatIso(la) : null,
         hasTerritory: r.has_territory,
@@ -176,10 +184,11 @@ export class FriendsService {
       zonic_id: number;
       username: string;
       avatar_file_id: string | null;
+      selected_frame_code: string | null;
       level: string | null;
     }> = await this.dataSource.query(
       `SELECT f.id::text, f.created_at, u.id::text AS from_id, u.zonic_id, u.username,
-              u.avatar_file_id, u.level
+              u.avatar_file_id, u.selected_frame_code, u.level
          FROM game_friendship f
          JOIN sys_user u ON u.id = f.requester_id
         WHERE f.addressee_id = $1 AND f.status = 'pending'
@@ -194,6 +203,7 @@ export class FriendsService {
         zonicId: r.zonic_id,
         username: r.username,
         avatarFileId: r.avatar_file_id,
+        selectedFrameCode: r.selected_frame_code,
         level: r.level,
       },
     }));

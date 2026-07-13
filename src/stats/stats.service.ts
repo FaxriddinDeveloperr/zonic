@@ -338,7 +338,7 @@ export class StatsService {
   // ─── C3. Public profile (BACKEND_TODO §3) ─────────────────────────────────
   async getPublicProfile(zonicId: number): Promise<PublicProfileDto> {
     const [u] = await this.dataSource.query(
-      `SELECT u.id::text, u.zonic_id, u.username, u.avatar_file_id, u.cover_file_id, u.bio,
+      `SELECT u.id::text, u.zonic_id, u.username, u.avatar_file_id, u.selected_frame_code, u.cover_file_id, u.bio,
               u.selected_badge_code, r.fullname AS region_name
          FROM sys_user u LEFT JOIN info_region r ON r.id = u.region_id
         WHERE u.zonic_id = $1`,
@@ -380,6 +380,7 @@ export class StatsService {
       zonicId: u.zonic_id,
       username: u.username,
       avatarFileId: u.avatar_file_id,
+      selectedFrameCode: u.selected_frame_code ?? null,
       coverFileId: u.cover_file_id,
       level: Math.floor(lifetimeXp / 1000) + 1,
       bio: u.bio,
