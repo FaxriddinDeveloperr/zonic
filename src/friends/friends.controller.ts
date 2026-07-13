@@ -13,6 +13,8 @@ import {
   OkDto,
   RespondRequestDto,
   SearchRequestDto,
+  SearchUsersQueryDto,
+  SearchUsersResponseDto,
   UserSummaryDto,
 } from './dto/friends.dto';
 
@@ -35,6 +37,16 @@ export class FriendsController {
   @ApiOkResponse({ type: UserSummaryDto })
   search(@Query() q: SearchRequestDto): Promise<UserSummaryDto> {
     return this.friends.search(q.zonicId);
+  }
+
+  @Get('SearchUsers')
+  @ApiOperation({ summary: 'Search people by ZONIC-ID or username (partial names match)' })
+  @ApiOkResponse({ type: SearchUsersResponseDto })
+  searchUsers(
+    @CurrentUser() user: AuthUser,
+    @Query() q: SearchUsersQueryDto,
+  ): Promise<SearchUsersResponseDto> {
+    return this.friends.searchUsers(user.userId, q.query, q.Page, q.PageSize);
   }
 
   @Post('Request')

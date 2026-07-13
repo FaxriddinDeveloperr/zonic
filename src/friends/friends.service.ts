@@ -13,6 +13,7 @@ import {
   FriendRequestsDto,
   MyIdDto,
   OkDto,
+  SearchUsersResponseDto,
   UserSummaryDto,
 } from './dto/friends.dto';
 
@@ -52,6 +53,40 @@ export class FriendsService {
       avatarFileId: u.avatar_file_id,
       selectedFrameCode: u.selected_frame_code ?? null,
       level: u.level,
+    };
+  }
+
+  /**
+   * People search: paste a ZONIC-ID (exact) or a username (exact or partial, case-insensitive).
+   * Returns a list — a partial name can match several users. Excludes the caller.
+   */
+  async searchUsers(
+    callerId: string,
+    query: string,
+    page: number,
+    pageSize: number,
+  ): Promise<SearchUsersResponseDto> {
+    const q = query.trim();
+    const asZonicId = /^\d+$/.test(q) ? Number(q) : null;
+    const rows = await this.dataSource.query(
+      `SELECT id::text, zonic_id, username, avatar_file_id, selected_frame_code, level
+         FROM sys_user
+        WHERE id <> $1
+          AND ( ($2::bigint IS NOT NULL AND zonic_id = $2::bigint)
+             OR username ILIKE '%' || $3 || '%' )
+        ORDER BY (username ILIKE $3) DESC, username ASC
+        LIMIT $4 OFFSET $5`,
+      [callerId, asZonicId, q, pageSize, (page - 1) * pageSize],
+    );
+    return {
+      items: rows.map((u: any) => ({
+        userId: u.id,
+        zonicId: u.zonic_id,
+        username: u.username,
+        avatarFileId: u.avatar_file_id,
+        selectedFrameCode: u.selected_frame_code ?? null,
+        level: u.level,
+      })),
     };
   }
 

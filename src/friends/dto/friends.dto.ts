@@ -1,7 +1,7 @@
 // Friends / Clan DTOs (Phase G).
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsUUID } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Min, MinLength } from 'class-validator';
 
 export class MyIdDto {
   @ApiProperty({ example: 772189, description: 'Your unique ZONIC-ID (share / search by this)' })
@@ -65,6 +65,33 @@ export class SearchRequestDto {
   @Type(() => Number)
   @IsInt()
   zonicId: number;
+}
+
+/** Free-text people search: paste a ZONIC-ID or a username (partial names match too). */
+export class SearchUsersQueryDto {
+  @ApiProperty({ example: 'asliddin', description: 'ZONIC-ID (772189) or username (partial ok)' })
+  @IsString()
+  @MinLength(2)
+  query: string;
+
+  @ApiPropertyOptional({ type: Number, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  Page = 1;
+
+  @ApiPropertyOptional({ type: Number, default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  PageSize = 20;
+}
+
+export class SearchUsersResponseDto {
+  @ApiProperty({ type: [UserSummaryDto] })
+  items: UserSummaryDto[];
 }
 
 export class FriendRequestDto {
