@@ -183,6 +183,10 @@ export class LocationGateway implements OnGatewayConnection, OnGatewayDisconnect
       client.emit('ZoneCaptured', {
         zoneId: result.zoneId,
         areaKm2: result.areaKm2,
+        // Run summary for the capture result screen (same numbers stored on the territory).
+        distanceKm: result.distanceKm,
+        durationSeconds: result.durationSeconds,
+        avgSpeedKmh: result.avgSpeedKmh,
         tangaEarned: reward.tangaEarned,
         xpEarned: reward.xpEarned,
       });

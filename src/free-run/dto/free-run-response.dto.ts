@@ -44,6 +44,30 @@ export class FreeRunHistoryResponseDto {
   items: FreeRunItemDto[];
 }
 
+/** POST /FreeRun/Save result — the SERVER's figures (GPS-cleaned distance, recomputed pace/speed). */
+export class SaveFreeRunResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ example: 5.02, description: 'Distance the server measured after GPS cleaning (km)' })
+  distanceKm: number;
+
+  @ApiProperty({ example: 1800 })
+  durationSeconds: number;
+
+  @ApiProperty({ example: 10.04, description: 'km/h — recomputed from the cleaned distance' })
+  averageSpeedKmh: number;
+
+  @ApiProperty({ example: 5.98, description: 'min/km — recomputed from the cleaned distance' })
+  paceMinPerKm: number;
+
+  @ApiProperty({ example: 1004, description: 'Coins credited for this run' })
+  tangaEarned: number;
+
+  @ApiProperty({ example: 5020, description: 'XP credited for this run' })
+  xpEarned: number;
+}
+
 export class FreeRunLeaderboardItemDto {
   @ApiProperty({ example: 1 })
   rank: number;

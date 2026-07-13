@@ -35,6 +35,10 @@ export interface CaptureResult {
   areaKm2?: number;
   centroidLat?: number;
   centroidLng?: number;
+  // Run summary for the capture screen (same figures stored on the territory).
+  distanceKm?: number;
+  durationSeconds?: number;
+  avgSpeedKmh?: number;
 }
 
 interface PointRow {
@@ -339,6 +343,9 @@ export class ZonesService {
         areaKm2: ZonesService.round(row.area_m2 / 1_000_000, 4),
         centroidLat: row.lat,
         centroidLng: row.lng,
+        distanceKm: ZonesService.round(runDistanceM / 1000, 2),
+        durationSeconds,
+        avgSpeedKmh: ZonesService.round(avgSpeedKmh, 2),
       };
     });
   }

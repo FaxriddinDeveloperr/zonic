@@ -11,6 +11,7 @@ import { LeaderboardRequestDto } from '../run-sessions/dto/leaderboard-request.d
 import {
   FreeRunHistoryResponseDto,
   FreeRunLeaderboardResponseDto,
+  SaveFreeRunResponseDto,
 } from './dto/free-run-response.dto';
 
 @ApiTags('FreeRun')
@@ -23,7 +24,11 @@ export class FreeRunController {
   @Post('Save')
   @HttpCode(200)
   @ApiOperation({ summary: 'Save a completed free run session' })
-  save(@CurrentUser() user: AuthUser, @Body() dto: SaveFreeRunDto): Promise<{ id: string }> {
+  @ApiOkResponse({ type: SaveFreeRunResponseDto })
+  save(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: SaveFreeRunDto,
+  ): Promise<SaveFreeRunResponseDto> {
     return this.freeRunService.save(user.userId, dto);
   }
 

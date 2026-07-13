@@ -16,6 +16,7 @@ import {
   FreeRunHistoryResponseDto,
   FreeRunItemDto,
   FreeRunLeaderboardResponseDto,
+  SaveFreeRunResponseDto,
 } from './dto/free-run-response.dto';
 
 const round = (v: number, d: number): number => {
@@ -37,7 +38,7 @@ export class FreeRunService {
     this.gpsFilter = config.get<FreeRunConfig>('freeRun')!;
   }
 
-  async save(userId: string, dto: SaveFreeRunDto): Promise<{ id: string }> {
+  async save(userId: string, dto: SaveFreeRunDto): Promise<SaveFreeRunResponseDto> {
     const startedAt = parseFlexibleDateTime(dto.startTime);
     const endedAt = parseFlexibleDateTime(dto.endTime);
     if (!startedAt) throw badRequest(['startTime is not a valid date.']);
@@ -85,9 +86,18 @@ export class FreeRunService {
     );
 
     // Automatic coin/XP earning: credit for the distance run.
-    await this.wallet.creditForActivity(userId, { km: distanceKm });
+    const reward = await this.wallet.creditForActivity(userId, { km: distanceKm });
 
-    return { id: saved.id };
+    // Return the SERVER's numbers so the finish screen shows exactly what was stored.
+    return {
+      id: saved.id,
+      distanceKm,
+      durationSeconds: dur,
+      averageSpeedKmh,
+      paceMinPerKm,
+      tangaEarned: reward.tangaEarned,
+      xpEarned: reward.xpEarned,
+    };
   }
 
   async getHistory(
