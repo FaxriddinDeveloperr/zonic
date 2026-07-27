@@ -2,7 +2,7 @@
 // time and a Tanga bet. Lifecycle: pending → accepted/declined; an accepted challenge whose start
 // time has passed is reported as 'active' (live result tracking + bet settlement is a follow-up —
 // the TZ models the live duel on the client). No fund movement happens here yet.
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -62,8 +62,14 @@ export class ChallengesService {
   ): Promise<ChallengeDto> {
     const opponent = await this.friends.search(opponentZonicId); // 404 if missing
     if (opponent.userId === userId) throw badRequest(['You cannot challenge yourself.']);
-    if (!(await this.friends.areFriends(userId, opponent.userId))) {
-      throw badRequest(['You can only challenge a friend.']);
+    // A valid Challenge Ticket (from the Market) is required. Having one also lets you challenge
+    // NON-friends — the ticket replaces the old "friends only" rule.
+    const ticket = await this.resolveTicket(userId);
+    if (!ticket) {
+      throw new BadRequestException({
+        message: "Bellashuv yuborish uchun Do'kondan Chorlov kartasini sotib olishingiz kerak",
+        status: 400,
+      });
     }
     const start = parseFlexibleDateTime(startAt);
     if (!start) throw badRequest(['startAt is not a valid date.']);
@@ -90,6 +96,14 @@ export class ChallengesService {
        VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING id::text`,
       [userId, opponent.userId, goalType, start, end, ChallengesService.WINNER_PRIZE],
     );
+    // Consume a single-use ticket now that the challenge is created (time-based ones stay).
+    if (ticket.consumePurchaseId) {
+      await this.dataSource.query(
+        `UPDATE market_purchase SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL`,
+        [ticket.consumePurchaseId],
+      );
+    }
+
     const dto = await this.getOne(ins.id, userId);
     // Notify (+push) the opponent that they've been challenged.
     await this.notifications.create(
@@ -355,6 +369,42 @@ export class ChallengesService {
       opponent: meIsChallenger ? opponentSide : challengerSide,
       leaderUserId,
     };
+  }
+
+  /**
+   * Find a usable Challenge Ticket. Prefers a valid time-based/permanent ticket (unlimited use, no
+   * consumption); falls back to a single-use ticket (which the caller then consumes). Returns null
+   * when the user has no valid ticket → the caller returns 400.
+   */
+  private async resolveTicket(userId: string): Promise<{ consumePurchaseId: string | null } | null> {
+    const rows: Array<{ purchase_id: string; duration: string; expires_at: Date | null }> =
+      await this.dataSource.query(
+        `SELECT p.id::text AS purchase_id, i.duration,
+                CASE i.duration
+                  WHEN '1d' THEN p.purchased_at + interval '1 day'
+                  WHEN '1m' THEN p.purchased_at + interval '30 days'
+                  WHEN '3m' THEN p.purchased_at + interval '90 days'
+                  ELSE NULL
+                END AS expires_at
+           FROM market_purchase p JOIN market_item i ON i.id = p.item_id
+          WHERE p.user_id = $1 AND p.consumed_at IS NULL AND i.category = 'challenge'`,
+        [userId],
+      );
+    const now = Date.now();
+    // 1) A still-valid time-based ticket, or a permanent one → use without consuming.
+    const unlimited = rows.find(
+      (r) =>
+        r.duration === 'permanent' ||
+        (['1d', '1m', '3m'].includes(r.duration) &&
+          r.expires_at != null &&
+          new Date(r.expires_at).getTime() > now),
+    );
+    if (unlimited) return { consumePurchaseId: null };
+    // 2) A single-use ticket → will be consumed after the challenge is created.
+    const single = rows.find((r) => r.duration === 'single');
+    if (single) return { consumePurchaseId: single.purchase_id };
+    // 3) No valid ticket.
+    return null;
   }
 
   private async getOne(id: string, userId: string): Promise<ChallengeDto> {

@@ -73,7 +73,7 @@ export class MarketService {
     }> = await this.dataSource.query(
       `SELECT i.code, i.title, i.category, i.duration, p.purchased_at
          FROM market_purchase p JOIN market_item i ON i.id = p.item_id
-        WHERE p.user_id = $1
+        WHERE p.user_id = $1 AND p.consumed_at IS NULL
         ORDER BY p.purchased_at DESC`,
       [userId],
     );
